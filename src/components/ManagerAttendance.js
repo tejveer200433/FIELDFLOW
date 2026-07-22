@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Clock3, Download, TimerReset, UsersRound } from "lucide-react";
 import { durationSeconds, formatDuration } from "@/lib/time";
+import { apiJson } from "@/lib/apiClient";
 
 function Metric({ label, value, icon: Icon, tone }) { return <div className="card p-6"><div className="flex items-start justify-between"><div><p className="text-xs font-semibold uppercase tracking-widest text-slate-500">{label}</p><p className="mt-3 text-3xl font-extrabold">{value}</p></div><span className={`grid h-12 w-12 place-items-center rounded-full ${tone}`}><Icon /></span></div></div>; }
 function Pill({ value }) { return <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${value === "Late" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{value}</span>; }
@@ -10,7 +11,7 @@ function Pill({ value }) { return <span className={`rounded-full border px-2.5 p
 export default function ManagerAttendance() {
   const [items, setItems] = useState([]);
   const [now, setNow] = useState(Date.now());
-  const load = useCallback(() => fetch("/api/attendance", { cache: "no-store" }).then(response => response.json()).then(payload => setItems(payload.data)), []);
+  const load = useCallback(() => apiJson("/api/attendance", { cache: "no-store" }).then(payload => setItems(payload.data)), []);
   useEffect(() => { load(); const clock = setInterval(() => setNow(Date.now()), 1000); const refresh = setInterval(load, 5000); return () => { clearInterval(clock); clearInterval(refresh); }; }, [load]);
 
   const daily = useMemo(() => {

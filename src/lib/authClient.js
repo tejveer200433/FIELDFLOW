@@ -18,19 +18,20 @@ export function useAuthGuard(requiredRole) {
   useEffect(() => {
     let active = true;
     async function verify() {
-      if (supabase) {
-        const { data } = await supabase.auth.getSession();
-        const user = data.session?.user;
-        const role = user?.user_metadata?.role;
-        if (!user || role !== requiredRole) {
-          router.replace(`/login/${requiredRole}`);
-          return;
-        }
-        saveIdentity({ role, email: user.email || "", name: user.user_metadata?.full_name || user.email?.split("@")[0] || "User", id: user.id });
-      } else if (localStorage.getItem("fieldflow-role") !== requiredRole) {
+      if (!supabase) {
         router.replace(`/login/${requiredRole}`);
         return;
       }
+      const { data } = await supabase.auth.getSession();
+      const user = data.session?.user;
+      if (!user) { router.replace(`/login/${requiredRole}`); return; }
+      const { data: profile, error } = await supabase.from("profiles").select("id,email,full_name,role,approval_status,active").eq("id", user.id).single();
+      if (error || !profile || profile.role !== requiredRole || profile.approval_status !== "approved" || !profile.active) {
+        await supabase.auth.signOut();
+        router.replace(`/login/${requiredRole}?error=access`);
+        return;
+      }
+      saveIdentity({ role: profile.role, email: profile.email, name: profile.full_name, id: profile.id });
       if (active) setReady(true);
     }
     verify();

@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { apiJson } from "@/lib/apiClient";
 
 const TrackingContext = createContext(null);
 
@@ -21,8 +22,7 @@ export function EmployeeTrackingProvider({ children }) {
     const now = Date.now();
     if (now - lastSentAt.current < 10000) return location;
     lastSentAt.current = now;
-    const response = await fetch("/api/locations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...identity(), ...location }) });
-    if (!response.ok) throw new Error("Could not share the location.");
+    await apiJson("/api/locations", { method: "POST", body: JSON.stringify(location) });
     setStatus("sharing");
     return location;
   }, [identity]);
@@ -47,7 +47,7 @@ export function EmployeeTrackingProvider({ children }) {
     watchId.current = null;
     localStorage.removeItem("fieldflow-tracking");
     setStatus("idle");
-    await fetch("/api/locations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ employeeId: identity().employeeId, sharing: false }) }).catch(() => {});
+    await apiJson("/api/locations", { method: "POST", body: JSON.stringify({ sharing: false }) }).catch(() => {});
   }, [identity]);
 
   useEffect(() => {

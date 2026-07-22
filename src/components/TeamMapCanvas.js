@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CircleMarker, MapContainer, Popup, TileLayer } from "react-leaflet";
 import { Clock3, LocateFixed, RefreshCw, Satellite } from "lucide-react";
+import { apiJson } from "@/lib/apiClient";
 
 function age(timestamp) {
   const seconds = Math.max(0, Math.round((Date.now() - new Date(timestamp).getTime()) / 1000));
@@ -18,9 +19,7 @@ export default function TeamMapCanvas() {
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch("/api/locations", { cache: "no-store" });
-      if (!response.ok) throw new Error();
-      const payload = await response.json();
+      const payload = await apiJson("/api/locations", { cache: "no-store" });
       const active = payload.data.filter(item => item.sharing);
       setLocations(active);
       setSelected(current => current ? active.find(item => item.employeeId === current.employeeId) || null : null);

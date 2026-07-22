@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight, CheckCircle2, ClipboardList, Clock3, Download, MapPin, Plus, Search, UserPlus, UsersRound, X } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import LiveTeamMap from "@/components/LiveTeamMap";
 import ManagerAttendance from "@/components/ManagerAttendance";
 import { activity, attendanceRows, managerEmployees, managerExpenses, managerReports, managerTasks } from "@/lib/managerData";
+import { apiJson } from "@/lib/apiClient";
+import EmployeeDirectory from "@/components/EmployeeDirectory";
 
 const weekly = [
   { day: "Mon", tasks: 32 }, { day: "Tue", tasks: 41 }, { day: "Wed", tasks: 38 }, { day: "Thu", tasks: 47 },
@@ -51,13 +53,20 @@ function Metric({ label, value, icon: Icon, tone, trend }) {
 
 function Dashboard() {
   const router = useRouter();
+  const [snapshot,setSnapshot]=useState({tasks:[],attendance:[],employees:[],sos:[]});
+  useEffect(()=>{Promise.all([apiJson("/api/tasks"),apiJson("/api/attendance"),apiJson("/api/employees"),apiJson("/api/sos")]).then(([tasksResult,attendanceResult,employeesResult,sosResult])=>setSnapshot({tasks:tasksResult.data,attendance:attendanceResult.data,employees:employeesResult.data,sos:sosResult.data}));},[]);
+  const managerTasks=[...snapshot.sos.map(alert=>({id:alert.id,title:`SOS · ${alert.employee}`,employee:alert.employee,client:alert.message,address:`${alert.latitude}, ${alert.longitude}`,priority:"Urgent",status:"Blocked",updatedAt:alert.createdAt})),...snapshot.tasks];
+  const onDuty=new Set(snapshot.attendance.filter(item=>!item.checkOut).map(item=>item.employeeId)).size;
+  const hours=Array.from(snapshot.attendance.reduce((groups,item)=>{if(item.date===new Date().toISOString().slice(0,10)){const current=groups.get(item.employee)||0;groups.set(item.employee,current+(item.durationSeconds||0)/3600);}return groups;},new Map()),([name,value])=>({name:name.split(" ")[0],value:Number(value.toFixed(2))}));
+  const weekly=Array.from({length:7},(_,offset)=>{const date=new Date();date.setDate(date.getDate()-(6-offset));const key=date.toISOString().slice(0,10);return{day:date.toLocaleDateString("en",{weekday:"short"}),tasks:managerTasks.filter(item=>item.status==="Completed"&&item.updatedAt?.slice(0,10)===key).length};});
+  const activity=managerTasks.slice(0,5).map(item=>({person:item.employee,action:`is ${item.status.toLowerCase()}`,detail:item.title,time:item.updatedAt?new Date(item.updatedAt).toLocaleString():"Recently",color:item.status==="Blocked"?"bg-rose-500":item.status==="Completed"?"bg-emerald-500":"bg-blue-500"}));
   return <>
     <PageHeading title="Operations dashboard" subtitle="Live pulse of your field team." />
     <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-      <Metric label="On duty" value="4 / 8" icon={UsersRound} tone="bg-teal-50 text-teal-600" trend="12%" />
-      <Metric label="In progress" value="3" icon={ClipboardList} tone="bg-blue-50 text-blue-600" trend="4%" />
-      <Metric label="Completed" value="2" icon={CheckCircle2} tone="bg-emerald-50 text-emerald-600" trend="9%" />
-      <Metric label="Blocked" value="1" icon={AlertTriangle} tone="bg-rose-50 text-rose-600" trend="-2%" />
+      <Metric label="On duty" value={`${onDuty} / ${snapshot.employees.filter(item=>item.role==="employee").length}`} icon={UsersRound} tone="bg-teal-50 text-teal-600" />
+      <Metric label="In progress" value={managerTasks.filter(item=>item.status==="In Progress").length} icon={ClipboardList} tone="bg-blue-50 text-blue-600" />
+      <Metric label="Completed" value={managerTasks.filter(item=>item.status==="Completed").length} icon={CheckCircle2} tone="bg-emerald-50 text-emerald-600" />
+      <Metric label="Blocked" value={managerTasks.filter(item=>item.status==="Blocked").length} icon={AlertTriangle} tone="bg-rose-50 text-rose-600" />
     </div>
     <div className="mt-7 grid gap-7 xl:grid-cols-[2fr_1fr]">
       <div className="card p-6"><div className="flex items-start justify-between"><div><h2 className="font-bold">Weekly task completion</h2><p className="text-sm text-slate-500">Tasks closed by day</p></div><Pill tone="green">Trending up</Pill></div><div className="mt-5 h-72"><ResponsiveContainer width="100%" height="100%"><LineChart data={weekly}><CartesianGrid stroke="#e8edf5" vertical={false} /><XAxis dataKey="day" tickLine={false} axisLine={false} /><YAxis tickLine={false} axisLine={false} /><Tooltip /><Line type="monotone" dataKey="tasks" stroke="#2563eb" strokeWidth={3} dot={{ r: 4, fill: "white", strokeWidth: 3 }} /></LineChart></ResponsiveContainer></div></div>
@@ -71,14 +80,19 @@ function Dashboard() {
 }
 
 function Employees() {
-  const [items, setItems] = useState(managerEmployees);
+  const pathname = usePathname();
+  const [items, setItems] = useState([]);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(null);
   const [adding, setAdding] = useState(false);
   const filtered = items.filter(item => `${item.name} ${item.department} ${item.email}`.toLowerCase().includes(query.toLowerCase()));
-  function add(event) { event.preventDefault(); const data = new FormData(event.currentTarget); const name = data.get("name"); setItems(current => [...current, { id: `e-${Date.now()}`, name, email: data.get("email"), department: data.get("department"), duty: "Offline", tasks: 0, performance: 0, avatar: `https://i.pravatar.cc/96?u=${encodeURIComponent(name)}` }]); setAdding(false); }
+  const isAdmin = pathname.startsWith("/admin");
+  useEffect(() => { apiJson("/api/employees").then(payload => setItems(payload.data.map(item => ({...item,duty:"Offline",tasks:0,performance:0,avatar:`https://i.pravatar.cc/96?u=${encodeURIComponent(item.email)}`})))); }, []);
+  function add(event) { event.preventDefault(); setAdding(false); window.alert("Ask the employee to sign up, then approve the account from the administrator workspace."); }
+  async function decideAccount(item,approvalStatus){const payload=await apiJson("/api/employees",{method:"PATCH",body:JSON.stringify({id:item.id,approvalStatus,role:item.requestedRole})});setItems(current=>current.map(profile=>profile.id===item.id?{...profile,...payload.data}:profile));}
   return <>
     <PageHeading title="Employees" subtitle={`${items.length} technicians across 4 departments`} action={<button onClick={() => setAdding(true)} className="btn-primary rounded-full px-7 py-4 text-base"><UserPlus className="h-5 w-5" />Add employee</button>} />
+    {isAdmin&&items.some(item=>item.approvalStatus==="pending")&&<section className="card mb-5 p-5"><h2 className="font-bold">Pending account approvals</h2><div className="mt-3 space-y-3">{items.filter(item=>item.approvalStatus==="pending").map(item=><div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-amber-50 p-4"><div><strong>{item.name}</strong><p className="text-sm text-slate-600">{item.email} · requests {item.requestedRole}</p></div><div className="flex gap-2"><button onClick={()=>decideAccount(item,"approved")} className="btn-primary">Approve</button><button onClick={()=>decideAccount(item,"rejected")} className="btn-secondary">Reject</button></div></div>)}</div></section>}
     <div className="card p-5"><label className="relative block"><Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} className="input py-4 pl-12" placeholder="Search by name or department" /></label><div className="mt-4 overflow-x-auto"><table className="min-w-full text-left"><thead><tr className="text-xs uppercase tracking-widest text-slate-500"><th className="py-4">Employee</th><th>Department</th><th>Status</th><th>Tasks</th><th>Performance</th><th /></tr></thead><tbody>{filtered.map(employee => <tr key={employee.id} className="border-t"><td className="py-3"><div className="flex items-center gap-3"><img src={employee.avatar} alt="" className="h-11 w-11 rounded-full object-cover" /><div><p className="font-bold">{employee.name}</p><p className="text-xs text-slate-500">{employee.email}</p></div></div></td><td className="pr-6">{employee.department}</td><td className="pr-6"><Pill tone={toneFor(employee.duty)}>{employee.duty}</Pill></td><td>{employee.tasks}</td><td><div className="flex items-center gap-3"><span className="h-1.5 w-28 overflow-hidden rounded-full bg-slate-100"><span className="block h-full bg-blue-500" style={{ width: `${employee.performance}%` }} /></span><strong className="text-sm">{employee.performance}%</strong></div></td><td><button onClick={() => setSelected(employee)} className="font-bold text-blue-600">View →</button></td></tr>)}</tbody></table>{!filtered.length && <p className="py-12 text-center text-slate-500">No employees match your search.</p>}</div></div>
     {adding && <Modal title="Add employee" onClose={() => setAdding(false)}><form onSubmit={add} className="space-y-4"><label><span className="label">Full name</span><input name="name" required className="input" /></label><label><span className="label">Email</span><input name="email" type="email" required className="input" /></label><label><span className="label">Department</span><select name="department" className="input"><option>Field Operations</option><option>Installations</option><option>Maintenance</option><option>Repairs</option></select></label><button className="btn-primary w-full">Add employee</button></form></Modal>}
     {selected && <Modal title="Employee details" onClose={() => setSelected(null)}><div className="text-center"><img src={selected.avatar} alt="" className="mx-auto h-24 w-24 rounded-full object-cover" /><h3 className="mt-4 text-xl font-bold">{selected.name}</h3><p className="text-slate-500">{selected.email}</p></div><dl className="mt-6 grid grid-cols-2 gap-4 rounded-2xl bg-slate-50 p-5 text-sm"><div><dt className="text-slate-500">Department</dt><dd className="mt-1 font-bold">{selected.department}</dd></div><div><dt className="text-slate-500">Current status</dt><dd className="mt-1"><Pill tone={toneFor(selected.duty)}>{selected.duty}</Pill></dd></div><div><dt className="text-slate-500">Tasks</dt><dd className="mt-1 font-bold">{selected.tasks}</dd></div><div><dt className="text-slate-500">Performance</dt><dd className="mt-1 font-bold">{selected.performance}%</dd></div></dl></Modal>}
@@ -86,10 +100,13 @@ function Employees() {
 }
 
 function TaskBoard() {
-  const [items, setItems] = useState(managerTasks);
+  const [items, setItems] = useState([]);
   const [adding, setAdding] = useState(false);
-  function drop(event, status) { event.preventDefault(); const id = event.dataTransfer.getData("text/plain"); setItems(current => current.map(item => item.id === id ? { ...item, status } : item)); }
-  function add(event) { event.preventDefault(); const data = new FormData(event.currentTarget); const employee = managerEmployees.find(item => item.id === data.get("employeeId")); setItems(current => [...current, { id: `t-${Date.now()}`, title: data.get("title"), employee: employee.name, employeeId: employee.id, client: data.get("client"), address: data.get("address"), priority: data.get("priority"), status: "Assigned" }]); setAdding(false); }
+  const [employees,setEmployees]=useState([]);
+  const managerEmployees = employees.length ? employees : [{ id: "", name: "No approved employees yet" }];
+  useEffect(()=>{apiJson("/api/tasks").then(payload=>setItems(payload.data));apiJson("/api/employees").then(payload=>setEmployees(payload.data.filter(item=>item.role==="employee"&&item.approvalStatus==="approved")));},[]);
+  async function drop(event, status) { event.preventDefault(); const id = event.dataTransfer.getData("text/plain"); const payload=await apiJson("/api/tasks",{method:"PATCH",body:JSON.stringify({id,status})}); setItems(current => current.map(item => item.id === id ? payload.data : item)); }
+  async function add(event) { event.preventDefault(); const data = Object.fromEntries(new FormData(event.currentTarget)); if(!data.employeeId){window.alert("Create or approve an employee account before assigning a task.");return;} try{const payload=await apiJson("/api/tasks",{method:"POST",body:JSON.stringify(data)});setItems(current=>[payload.data,...current]);setAdding(false);}catch(error){window.alert(error.message);} }
   return <><PageHeading title="Task board" subtitle="Drag tasks between columns to update status." action={<button onClick={() => setAdding(true)} className="btn-primary rounded-full px-7 py-4 text-base"><Plus className="h-5 w-5" />Assign task</button>} /><div className="grid gap-4 overflow-x-auto xl:grid-cols-5">{columns.map(column => { const columnItems = items.filter(item => item.status === column); return <section key={column} onDragOver={event => event.preventDefault()} onDrop={event => drop(event, column)} className="min-h-[500px] min-w-[250px] rounded-3xl border border-dashed border-slate-200 bg-slate-50/60 p-4"><div className="mb-4 flex items-center gap-3"><Pill tone={toneFor(column)}>{column}</Pill><span className="text-sm font-bold text-slate-500">{columnItems.length}</span></div><div className="space-y-3">{columnItems.map(task => <article draggable onDragStart={event => event.dataTransfer.setData("text/plain", task.id)} key={task.id} className="cursor-grab rounded-2xl border border-slate-200 bg-white p-4 shadow-sm active:cursor-grabbing"><div className="flex items-start justify-between gap-2"><h3 className="truncate font-bold" title={task.title}>{task.title}</h3><Pill tone={toneFor(task.priority)}>{task.priority}</Pill></div><p className="mt-2 text-sm text-slate-500">{task.client}</p><p className="mt-2 flex items-center gap-1 text-xs text-slate-500"><MapPin className="h-3.5 w-3.5" />{task.address}</p><p className="mt-4 text-sm font-medium">{task.employee}</p></article>)}</div></section>; })}</div>
     {adding && <Modal title="Assign task" onClose={() => setAdding(false)}><form onSubmit={add} className="space-y-4"><label><span className="label">Task title</span><input name="title" required className="input" /></label><label><span className="label">Employee</span><select name="employeeId" className="input">{managerEmployees.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label><span className="label">Client</span><input name="client" required className="input" /></label><label><span className="label">Site/address</span><input name="address" required className="input" /></label><label><span className="label">Priority</span><select name="priority" className="input"><option>Low</option><option>Medium</option><option>High</option><option>Urgent</option></select></label><button className="btn-primary w-full">Create assignment</button></form></Modal>}
   </>;
@@ -117,6 +134,11 @@ function LegacyExpenses() {
 }
 
 function Analytics() {
+  const [analyticsData,setAnalyticsData]=useState({tasks:[],employees:[]});
+  useEffect(()=>{Promise.all([apiJson("/api/tasks"),apiJson("/api/employees")]).then(([taskResult,employeeResult])=>setAnalyticsData({tasks:taskResult.data,employees:employeeResult.data.filter(item=>item.role==="employee")}));},[]);
+  const taskMix=["Assigned","On The Way","In Progress","Completed","Blocked"].map((name,index)=>({name,value:analyticsData.tasks.filter(item=>item.status===name).length,color:["#64748b","#8b5cf6","#3b82f6","#10b981","#f43f5e"][index]})).filter(item=>item.value);
+  const performance=analyticsData.employees.map(employee=>{const assigned=analyticsData.tasks.filter(task=>task.employeeId===employee.id);return{name:employee.name.split(" ")[0],value:assigned.length?Math.round(assigned.filter(task=>task.status==="Completed").length/assigned.length*100):0};});
+  const throughput=Array.from({length:14},(_,offset)=>{const date=new Date();date.setDate(date.getDate()-(13-offset));const key=date.toISOString().slice(0,10);const changed=analyticsData.tasks.filter(item=>item.updatedAt?.slice(0,10)===key);const done=changed.filter(item=>item.status==="Completed").length;return{day:`D${offset+1}`,tasks:done,sla:changed.length?Math.round(done/changed.length*100):100};});
   return <><PageHeading title="Analytics" subtitle="Performance, throughput and SLA insights." /><div className="grid gap-7 xl:grid-cols-[2fr_1fr]"><div className="card p-6"><h2 className="font-bold">Throughput & SLA (14 days)</h2><div className="mt-4 h-72"><ResponsiveContainer><LineChart data={throughput}><CartesianGrid stroke="#e8edf5" vertical={false} /><XAxis dataKey="day" axisLine={false} tickLine={false} /><YAxis axisLine={false} tickLine={false} /><Tooltip /><Legend /><Line name="Tasks done" dataKey="tasks" stroke="#3b82f6" strokeWidth={2.5} /><Line name="SLA %" dataKey="sla" stroke="#10b981" strokeWidth={2.5} /></LineChart></ResponsiveContainer></div></div><div className="card p-6"><h2 className="font-bold">Task mix</h2><div className="h-72"><ResponsiveContainer><PieChart><Pie data={taskMix} dataKey="value" nameKey="name" innerRadius={62} outerRadius={100} paddingAngle={3}>{taskMix.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip /><Legend /></PieChart></ResponsiveContainer></div></div></div><div className="card mt-7 p-6"><h2 className="font-bold">Employee performance</h2><div className="mt-4 h-72"><ResponsiveContainer><BarChart data={performance}><CartesianGrid stroke="#e8edf5" vertical={false} /><XAxis dataKey="name" axisLine={false} tickLine={false} /><YAxis domain={[0, 100]} axisLine={false} tickLine={false} /><Tooltip /><Bar dataKey="value" fill="#2563eb" radius={[10, 10, 0, 0]} /></BarChart></ResponsiveContainer></div></div></>;
 }
 
@@ -124,10 +146,10 @@ function Reports() {
   const [items, setItems] = useState([]);
   const [filter, setFilter] = useState("All");
   const [comments, setComments] = useState({});
-  const load = useCallback(() => fetch("/api/reports", { cache: "no-store" }).then(response => response.json()).then(payload => setItems(payload.data)), []);
+  const load = useCallback(() => apiJson("/api/reports", { cache: "no-store" }).then(payload => setItems(payload.data)), []);
   useEffect(() => { load(); const timer = setInterval(load, 5000); return () => clearInterval(timer); }, [load]);
   const visible = filter === "All" ? items : items.filter(item => item.status === filter);
-  async function decide(id, status) { await fetch("/api/reports", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status, managerComment: comments[id] || (status === "Approved" ? "Approved by manager." : "Please review the manager decision.") }) }); load(); }
+  async function decide(id, status) { await apiJson("/api/reports", { method: "PATCH", body: JSON.stringify({ id, status, managerComment: comments[id] || (status === "Approved" ? "Approved by manager." : "Please review the manager decision.") }) }); load(); }
   return <><PageHeading title="Daily reports" subtitle="Employee updates appear here automatically for review." /><div className="mb-5 flex flex-wrap gap-2">{["All", "Submitted", "Approved", "Needs Update", "Rejected"].map(item => <button key={item} onClick={() => setFilter(item)} className={filter === item ? "btn-primary rounded-full py-2" : "btn-secondary rounded-full py-2"}>{item}</button>)}</div><div className="grid gap-5 xl:grid-cols-2">{visible.map(report => { const employee = managerEmployees.find(item => item.id === report.employeeId); const avatar = employee?.avatar || `https://i.pravatar.cc/96?u=${encodeURIComponent(report.employee)}`; return <article key={report.id} className="card p-6"><div className="flex justify-between gap-4"><div className="flex gap-4"><img src={avatar} alt="" className="h-12 w-12 rounded-full object-cover" /><div><h2 className="text-lg font-bold">{report.employee}</h2><p className="text-sm text-slate-500">{report.date} · {report.hours}h</p></div></div><Pill tone={toneFor(report.status)}>{report.status}</Pill></div><p className="mt-5"><strong>Task:</strong> {report.task}</p><p className="mt-3">{report.workCompleted}</p><p className="mt-3 rounded-2xl bg-amber-50 px-3 py-2 text-sm text-amber-700">⚠ {report.problems}</p><p className="mt-2 rounded-2xl bg-blue-50 px-3 py-2 text-sm text-blue-700">→ Tomorrow: {report.tomorrowPlan}</p>{report.managerComment && <p className="mt-2 rounded-2xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Previous decision: {report.managerComment}</p>}<textarea value={comments[report.id] || ""} onChange={event => setComments(current => ({ ...current, [report.id]: event.target.value }))} className="input mt-4 min-h-20" placeholder="Manager comment (optional)" /><div className="mt-4 flex flex-wrap gap-2"><button onClick={() => decide(report.id, "Approved")} className="btn-primary rounded-full">Approve</button><button onClick={() => decide(report.id, "Needs Update")} className="btn-secondary rounded-full">Request update</button><button onClick={() => decide(report.id, "Rejected")} className="rounded-full px-4 py-2 text-sm font-bold text-rose-600 hover:bg-rose-50">Reject</button></div></article>; })}</div>{!visible.length && <p className="card p-12 text-center text-slate-500">No reports in this category.</p>}</>;
 }
 
@@ -144,10 +166,10 @@ function Expenses() {
   const [items, setItems] = useState([]);
   const [filter, setFilter] = useState("All");
   const [comments, setComments] = useState({});
-  const load = useCallback(() => fetch("/api/expenses", { cache: "no-store" }).then(response => response.json()).then(payload => setItems(payload.data)), []);
+  const load = useCallback(() => apiJson("/api/expenses", { cache: "no-store" }).then(payload => setItems(payload.data)), []);
   useEffect(() => { load(); const timer = setInterval(load, 5000); return () => clearInterval(timer); }, [load]);
   const visible = filter === "All" ? items : items.filter(item => item.status === filter);
-  async function decide(id, status) { await fetch("/api/expenses", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status, managerComment: comments[id] || `${status} by manager.` }) }); load(); }
+  async function decide(id, status) { await apiJson("/api/expenses", { method: "PATCH", body: JSON.stringify({ id, status, managerComment: comments[id] || `${status} by manager.` }) }); load(); }
   return <><PageHeading title="Expenses" subtitle="Employee submissions appear here for approval." /><div className="mb-5 flex flex-wrap gap-2">{["All", "Pending", "Approved", "Rejected"].map(item => <button key={item} onClick={() => setFilter(item)} className={filter === item ? "btn-primary rounded-full" : "btn-secondary rounded-full"}>{item}</button>)}</div><div className="card overflow-x-auto"><table className="min-w-full text-left"><thead className="bg-slate-50 text-xs uppercase tracking-widest text-slate-500"><tr><th className="px-5 py-4">Employee</th><th>Type</th><th>Date</th><th>Note</th><th>Amount</th><th>Status</th><th>Decision</th></tr></thead><tbody>{visible.map(item => <tr className="border-t" key={item.id}><td className="px-5 py-5 font-bold">{item.employee}</td><td>{item.type}</td><td>{item.date}</td><td>{item.note}</td><td className="font-bold">₹{item.amount.toLocaleString("en-IN")}</td><td><Pill tone={toneFor(item.status)}>{item.status}</Pill></td><td className="min-w-64 py-3 pr-4"><input value={comments[item.id] || ""} onChange={event => setComments(current => ({ ...current, [item.id]: event.target.value }))} className="input mb-2 py-2" placeholder="Comment" /><div className="flex gap-3"><button className="text-sm font-bold text-emerald-600" onClick={() => decide(item.id, "Approved")}>Approve</button><button className="text-sm font-bold text-rose-600" onClick={() => decide(item.id, "Rejected")}>Reject</button></div></td></tr>)}</tbody></table></div></>;
 }
 
@@ -155,7 +177,7 @@ export default function ManagerWorkspace({ section }) {
   const content = useMemo(() => {
     if (!section) return <Dashboard />;
     if (section === "map") return <><PageHeading title="Live team map" subtitle="Select a technician to inspect their latest shared position." /><LiveTeamMap /></>;
-    if (section === "employees") return <Employees />;
+    if (section === "employees") return <EmployeeDirectory />;
     if (section === "tasks") return <TaskBoard />;
     if (section === "reports") return <Reports />;
     if (section === "attendance") return <ManagerAttendance />;

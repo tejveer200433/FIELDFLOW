@@ -1,15 +1,6 @@
-import { NextResponse } from "next/server";
-import { tasks } from "@/lib/data";
-
-export async function GET() {
-  return NextResponse.json({ data: tasks });
-}
-
-export async function POST(request) {
-  const body = await request.json();
-  if (!body.title || !body.employee || !body.address) {
-    return NextResponse.json({ error: "title, employee and address are required" }, { status: 400 });
-  }
-  const task = { id: `t-${Date.now()}`, status: "Assigned", priority: "Medium", time: "Today", client: "Unassigned", ...body };
-  return NextResponse.json({ data: task }, { status: 201 });
-}
+import { ApiError, apiFailure, requireSession } from "@/lib/supabaseServer";
+export const dynamic="force-dynamic";
+const map=row=>({id:row.id,title:row.title,employeeId:row.employee_id,employee:row.profiles?.full_name||"Unassigned",client:row.client,address:row.address,priority:row.priority,status:row.status,time:row.scheduled_at?new Date(row.scheduled_at).toLocaleString():"Unscheduled",description:row.description||"",createdAt:row.created_at,updatedAt:row.updated_at});
+export async function GET(request){try{const{client,profile}=await requireSession(request,["employee","manager","admin"]);let query=client.from("tasks").select("*,profiles!tasks_employee_id_fkey(full_name)").order("created_at",{ascending:false});if(profile.role==="employee")query=query.eq("employee_id",profile.id);const{data,error}=await query;if(error)throw error;return Response.json({data:data.map(map)});}catch(error){return apiFailure(error);}}
+export async function POST(request){try{const{client,profile}=await requireSession(request,["manager","admin"]);const body=await request.json();if(!body.title||!body.employeeId||!body.client||!body.address)throw new ApiError("Title, employee, client and address are required.");const{data,error}=await client.from("tasks").insert({title:String(body.title).slice(0,160),employee_id:body.employeeId,created_by:profile.id,client:String(body.client).slice(0,160),address:String(body.address).slice(0,500),priority:body.priority||"Medium",status:"Assigned",scheduled_at:body.scheduledAt||null,description:String(body.description||"").slice(0,3000)||null}).select("*,profiles!tasks_employee_id_fkey(full_name)").single();if(error)throw error;return Response.json({data:map(data)},{status:201});}catch(error){return apiFailure(error);}}
+export async function PATCH(request){try{const{client,profile}=await requireSession(request,["employee","manager","admin"]);const body=await request.json();if(!["Assigned","On The Way","In Progress","Completed","Blocked"].includes(body.status))throw new ApiError("A valid task status is required.");let error;if(profile.role==="employee"){({error}=await client.rpc("update_my_task_status",{p_task_id:body.id,p_status:body.status}));}else{({error}=await client.from("tasks").update({status:body.status,updated_at:new Date().toISOString()}).eq("id",body.id));}if(error)throw error;const{data,error:readError}=await client.from("tasks").select("*,profiles!tasks_employee_id_fkey(full_name)").eq("id",body.id).single();if(readError)throw readError;return Response.json({data:map(data)});}catch(error){return apiFailure(error);}}

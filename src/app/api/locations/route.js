@@ -1,49 +1,5 @@
-import { NextResponse } from "next/server";
-
+import { ApiError, apiFailure, requireSession } from "@/lib/supabaseServer";
 export const dynamic = "force-dynamic";
-
-const seedLocations = [
-  { employeeId: "e-2", name: "Neha Verma", latitude: 28.4946, longitude: 77.0888, accuracy: 24, updatedAt: new Date().toISOString(), sharing: true },
-  { employeeId: "e-5", name: "Vikram Rao", latitude: 28.6448, longitude: 77.2167, accuracy: 31, updatedAt: new Date().toISOString(), sharing: true }
-];
-
-const store = globalThis.fieldflowLocationStore || new Map(seedLocations.map(location => [location.employeeId, location]));
-globalThis.fieldflowLocationStore = store;
-
-export async function GET() {
-  return NextResponse.json(
-    { data: Array.from(store.values()), storage: "demo-memory" },
-    { headers: { "Cache-Control": "no-store" } }
-  );
-}
-
-export async function POST(request) {
-  const body = await request.json();
-  const employeeId = String(body.employeeId || "").trim();
-  if (!employeeId) return NextResponse.json({ error: "employeeId is required" }, { status: 400 });
-
-  if (body.sharing === false) {
-    const existing = store.get(employeeId);
-    if (existing) store.set(employeeId, { ...existing, sharing: false, updatedAt: new Date().toISOString() });
-    return NextResponse.json({ data: store.get(employeeId) || null });
-  }
-
-  const latitude = Number(body.latitude);
-  const longitude = Number(body.longitude);
-  const accuracy = Number(body.accuracy);
-  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
-    return NextResponse.json({ error: "Valid latitude and longitude are required" }, { status: 400 });
-  }
-
-  const location = {
-    employeeId,
-    name: String(body.name || "Employee").slice(0, 80),
-    latitude,
-    longitude,
-    accuracy: Number.isFinite(accuracy) && accuracy >= 0 ? Math.round(accuracy) : null,
-    updatedAt: new Date().toISOString(),
-    sharing: true
-  };
-  store.set(employeeId, location);
-  return NextResponse.json({ data: location }, { status: 201 });
-}
+const map=row=>({employeeId:row.employee_id,name:row.profiles?.full_name||"Employee",latitude:row.latitude,longitude:row.longitude,accuracy:row.accuracy,updatedAt:row.updated_at,sharing:row.sharing});
+export async function GET(request){try{const{client}=await requireSession(request,["manager","admin"]);const{data,error}=await client.from("employee_locations").select("*,profiles!employee_locations_employee_id_fkey(full_name)").eq("sharing",true).order("updated_at",{ascending:false});if(error)throw error;return Response.json({data:data.map(map)},{headers:{"Cache-Control":"no-store"}});}catch(error){return apiFailure(error);}}
+export async function POST(request){try{const{client,profile}=await requireSession(request,["employee"]);const body=await request.json();if(body.sharing===false){const{data,error}=await client.from("employee_locations").upsert({employee_id:profile.id,sharing:false,updated_at:new Date().toISOString()}).select("*,profiles!employee_locations_employee_id_fkey(full_name)").single();if(error)throw error;return Response.json({data:map(data)});}const latitude=Number(body.latitude),longitude=Number(body.longitude),accuracy=Number(body.accuracy);if(!Number.isFinite(latitude)||latitude< -90||latitude>90||!Number.isFinite(longitude)||longitude< -180||longitude>180)throw new ApiError("Valid latitude and longitude are required.");const now=new Date().toISOString();const record={employee_id:profile.id,latitude,longitude,accuracy:Number.isFinite(accuracy)?Math.max(0,accuracy):null,sharing:true,recorded_at:now,updated_at:now};const[{data,error},{error:historyError}]=await Promise.all([client.from("employee_locations").upsert(record).select("*,profiles!employee_locations_employee_id_fkey(full_name)").single(),client.from("location_history").insert({employee_id:profile.id,latitude,longitude,accuracy:record.accuracy,recorded_at:now})]);if(error)throw error;if(historyError)throw historyError;return Response.json({data:map(data)},{status:201});}catch(error){return apiFailure(error);}}

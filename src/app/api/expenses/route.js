@@ -1,27 +1,6 @@
-import { NextResponse } from "next/server";
-import store from "@/lib/workflowStore";
-
+import { ApiError, apiFailure, requireSession } from "@/lib/supabaseServer";
 export const dynamic = "force-dynamic";
-
-export async function GET(request) {
-  const employeeId = new URL(request.url).searchParams.get("employeeId");
-  const data = employeeId ? store.expenses.filter(item => item.employeeId === employeeId) : store.expenses;
-  return NextResponse.json({ data }, { headers: { "Cache-Control": "no-store" } });
-}
-
-export async function POST(request) {
-  const body = await request.json();
-  if (!body.employeeId || !body.employee || !body.type || !Number(body.amount) || !body.note) return NextResponse.json({ error: "Type, amount and note are required." }, { status: 400 });
-  const expense = { id: `x-${Date.now()}`, employeeId: body.employeeId, employee: body.employee, type: body.type, amount: Number(body.amount), date: new Date().toISOString().slice(0, 10), note: body.note, status: "Pending", managerComment: "" };
-  store.expenses.unshift(expense);
-  return NextResponse.json({ data: expense }, { status: 201 });
-}
-
-export async function PATCH(request) {
-  const body = await request.json();
-  const expense = store.expenses.find(item => item.id === body.id);
-  if (!expense || !["Approved", "Rejected"].includes(body.status)) return NextResponse.json({ error: "Valid expense and decision are required." }, { status: 400 });
-  expense.status = body.status;
-  expense.managerComment = String(body.managerComment || "").slice(0, 500);
-  return NextResponse.json({ data: expense });
-}
+const map = row => ({ id:row.id,employeeId:row.employee_id,employee:row.profiles?.full_name||"Employee",type:row.type,amount:Number(row.amount),date:row.expense_date,note:row.note,receiptUrl:row.receipt_url,status:row.status,managerComment:row.manager_comment||"" });
+export async function GET(request){try{const{client,profile}=await requireSession(request,["employee","manager","admin"]);let query=client.from("expenses").select("*,profiles!expenses_employee_id_fkey(full_name)").order("created_at",{ascending:false});if(profile.role==="employee")query=query.eq("employee_id",profile.id);const requested=new URL(request.url).searchParams.get("employeeId");if(requested&&profile.role!=="employee")query=query.eq("employee_id",requested);const{data,error}=await query;if(error)throw error;return Response.json({data:data.map(map)});}catch(error){return apiFailure(error);}}
+export async function POST(request){try{const{client,profile}=await requireSession(request,["employee"]);const body=await request.json();if(!body.type||!Number(body.amount)||!body.note)throw new ApiError("Type, amount and note are required.");const{data,error}=await client.from("expenses").insert({employee_id:profile.id,task_id:body.taskId||null,type:String(body.type).slice(0,80),amount:Number(body.amount),note:String(body.note).slice(0,2000),receipt_url:body.receiptUrl||null}).select("*,profiles!expenses_employee_id_fkey(full_name)").single();if(error)throw error;return Response.json({data:map(data)},{status:201});}catch(error){return apiFailure(error);}}
+export async function PATCH(request){try{const{client,profile}=await requireSession(request,["manager","admin"]);const body=await request.json();if(!["Approved","Rejected"].includes(body.status))throw new ApiError("A valid expense decision is required.");const{data,error}=await client.from("expenses").update({status:body.status,manager_comment:String(body.managerComment||"").slice(0,500),reviewed_by:profile.id,reviewed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",body.id).select("*,profiles!expenses_employee_id_fkey(full_name)").single();if(error)throw error;return Response.json({data:map(data)});}catch(error){return apiFailure(error);}}

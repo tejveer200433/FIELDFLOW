@@ -1,27 +1,6 @@
-import { NextResponse } from "next/server";
-import store from "@/lib/workflowStore";
-
+import { ApiError, apiFailure, requireSession } from "@/lib/supabaseServer";
 export const dynamic = "force-dynamic";
-
-export async function GET(request) {
-  const employeeId = new URL(request.url).searchParams.get("employeeId");
-  const data = employeeId ? store.reports.filter(item => item.employeeId === employeeId) : store.reports;
-  return NextResponse.json({ data }, { headers: { "Cache-Control": "no-store" } });
-}
-
-export async function POST(request) {
-  const body = await request.json();
-  if (!body.employeeId || !body.employee || !body.task || !body.workCompleted || !Number(body.hours)) return NextResponse.json({ error: "Task, completed work and hours are required." }, { status: 400 });
-  const report = { id: `r-${Date.now()}`, employeeId: body.employeeId, employee: body.employee, date: new Date().toISOString().slice(0, 10), hours: String(body.hours), task: body.task, workCompleted: body.workCompleted, problems: body.problems || "None", tomorrowPlan: body.tomorrowPlan || "Not specified", status: "Submitted", managerComment: "" };
-  store.reports.unshift(report);
-  return NextResponse.json({ data: report }, { status: 201 });
-}
-
-export async function PATCH(request) {
-  const body = await request.json();
-  const report = store.reports.find(item => item.id === body.id);
-  if (!report || !["Approved", "Rejected", "Needs Update"].includes(body.status)) return NextResponse.json({ error: "Valid report and decision are required." }, { status: 400 });
-  report.status = body.status;
-  report.managerComment = String(body.managerComment || "").slice(0, 500);
-  return NextResponse.json({ data: report });
-}
+const map = row => ({ id: row.id, employeeId: row.employee_id, employee: row.profiles?.full_name || "Employee", date: row.report_date, hours: String(row.hours), task: row.task_title, taskId: row.task_id, workCompleted: row.work_completed, problems: row.problems || "None", tomorrowPlan: row.tomorrow_plan || "Not specified", status: row.status, managerComment: row.manager_comment || "" });
+export async function GET(request) { try { const { client, profile } = await requireSession(request, ["employee","manager","admin"]); let query = client.from("daily_reports").select("*,profiles!daily_reports_employee_id_fkey(full_name)").order("created_at", { ascending: false }); if (profile.role === "employee") query=query.eq("employee_id", profile.id); const requested=new URL(request.url).searchParams.get("employeeId"); if(requested&&profile.role!=="employee") query=query.eq("employee_id",requested); const {data,error}=await query; if(error) throw error; return Response.json({data:data.map(map)}); } catch(error){return apiFailure(error);} }
+export async function POST(request) { try { const {client,profile}=await requireSession(request,["employee"]); const body=await request.json(); if(!body.task||!body.workCompleted||!Number(body.hours)) throw new ApiError("Task, completed work and hours are required."); const {data,error}=await client.from("daily_reports").insert({employee_id:profile.id,task_id:body.taskId||null,task_title:String(body.task).slice(0,160),hours:Number(body.hours),work_completed:String(body.workCompleted).slice(0,5000),problems:String(body.problems||"" ).slice(0,2000)||null,tomorrow_plan:String(body.tomorrowPlan||"").slice(0,2000)||null}).select("*,profiles!daily_reports_employee_id_fkey(full_name)").single(); if(error) throw error; return Response.json({data:map(data)},{status:201}); } catch(error){return apiFailure(error);} }
+export async function PATCH(request) { try { const {client,profile}=await requireSession(request,["manager","admin"]); const body=await request.json(); if(!["Approved","Rejected","Needs Update"].includes(body.status)) throw new ApiError("A valid report decision is required."); const {data,error}=await client.from("daily_reports").update({status:body.status,manager_comment:String(body.managerComment||"").slice(0,500),reviewed_by:profile.id,reviewed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",body.id).select("*,profiles!daily_reports_employee_id_fkey(full_name)").single(); if(error) throw error; return Response.json({data:map(data)}); } catch(error){return apiFailure(error);} }

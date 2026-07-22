@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Clock3, Radio, TimerReset } from "lucide-react";
 import { useEmployeeTracking } from "@/components/EmployeeTrackingContext";
 import { durationSeconds, formatDuration } from "@/lib/time";
+import { apiJson } from "@/lib/apiClient";
 
 function Status({ value }) { return <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${value === "Late" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{value}</span>; }
 
@@ -14,7 +15,7 @@ export default function EmployeeAttendance() {
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const load = useCallback(async employeeId => { const response = await fetch(`/api/attendance?employeeId=${encodeURIComponent(employeeId)}`, { cache: "no-store" }); const payload = await response.json(); setRecords(payload.data); }, []);
+  const load = useCallback(async () => { const payload = await apiJson("/api/attendance", { cache: "no-store" }); setRecords(payload.data); }, []);
 
   useEffect(() => {
     const current = { employeeId: localStorage.getItem("fieldflow-employee-id") || "employee-demo", employee: localStorage.getItem("fieldflow-name") || "Employee" };
@@ -33,9 +34,7 @@ export default function EmployeeAttendance() {
     setBusy(true); setMessage("");
     try {
       const location = action === "check-in" ? await tracking.startTracking() : await tracking.getPosition();
-      const response = await fetch("/api/attendance", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...identity, action, location, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }) });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error);
+      const payload = await apiJson("/api/attendance", { method: "POST", body: JSON.stringify({ action, location, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }) });
       if (action === "check-out") await tracking.stopTracking();
       setMessage(action === "check-in" ? "Checked in. Your work timer and live location are running." : `Checked out. Total shift time: ${payload.data.hours}.`);
       await load(identity.employeeId);
