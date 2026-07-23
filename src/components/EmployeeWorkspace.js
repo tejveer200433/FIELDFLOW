@@ -48,14 +48,180 @@ function LegacyAttendance() {
 
 function Reports() {
   const identity = useIdentity();
+
   const [items, setItems] = useState([]);
   const [message, setMessage] = useState("");
-  const [taskItems,setTaskItems]=useState([]);
-  const managerTasks=taskItems.map(item=>({...item,employeeId:"e-1"}));
-  const load = useCallback(() => apiJson("/api/reports", { cache: "no-store" }).then(payload => setItems(payload.data)), [identity.employeeId]);
-  useEffect(() => { load(); apiJson("/api/tasks",{cache:"no-store"}).then(payload=>setTaskItems(payload.data)); }, [load]);
-  async function submit(event) { event.preventDefault(); const form = event.currentTarget; const data = Object.fromEntries(new FormData(form)); try { await apiJson("/api/reports", { method: "POST", body: JSON.stringify(data) }); setMessage("Report submitted to your manager."); form.reset(); load(); } catch(error) { setMessage(error.message); } }
-  return <><Heading title="Daily reports" subtitle="Summarise the day, flag blockers, and plan tomorrow." /><form onSubmit={submit} className="card space-y-5 p-6"><label><span className="label uppercase tracking-widest">Task</span><select name="task" className="input">{managerTasks.filter(task => task.employeeId === "e-1").map(task => <option key={task.id}>{task.title}</option>)}</select></label><div className="grid gap-4 sm:grid-cols-[1fr_150px]"><label><span className="label uppercase tracking-widest">Work completed</span><textarea name="workCompleted" required className="input min-h-28" placeholder="What did you accomplish today?" /></label><label><span className="label uppercase tracking-widest">Hours</span><input name="hours" required type="number" min="0.5" max="24" step="0.5" className="input" placeholder="8" /></label></div><label><span className="label uppercase tracking-widest">Problems / delays</span><input name="problems" className="input" placeholder="Optional" /></label><label><span className="label uppercase tracking-widest">Tomorrow's plan</span><input name="tomorrowPlan" className="input" placeholder="Optional" /></label><button className="btn-primary w-full rounded-full py-4"><Send className="h-4 w-4" />Submit report</button>{message && <p className="rounded-xl bg-blue-50 p-3 text-sm text-blue-700">{message}</p>}</form><h2 className="mt-8 text-sm font-bold uppercase tracking-widest text-slate-500">Recent reports</h2><div className="mt-3 space-y-3">{items.map(item => <article key={item.id} className="card p-5"><div className="flex items-start justify-between gap-3"><div><h3 className="font-bold">{item.workCompleted}</h3><p className="mt-1 text-sm text-slate-500">{item.date} · {item.hours}h · {item.task}</p></div><Pill status={item.status} /></div>{item.managerComment && <p className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700"><strong>Manager:</strong> {item.managerComment}</p>}</article>)}</div></>;
+  const [taskItems, setTaskItems] = useState([]);
+
+  const load = useCallback(
+    () =>
+      apiJson("/api/reports", { cache: "no-store" }).then(payload =>
+        setItems(payload.data)
+      ),
+    [identity.employeeId]
+  );
+
+  useEffect(() => {
+    load();
+
+    apiJson("/api/tasks", { cache: "no-store" }).then(payload =>
+      setTaskItems(payload.data)
+    );
+  }, [load]);
+
+  async function submit(event) {
+    event.preventDefault();
+
+    const form = event.currentTarget;
+    const data = Object.fromEntries(new FormData(form));
+
+    const selectedTask = taskItems.find(
+      task => task.id === data.taskId
+    );
+
+    const reportData = {
+      ...data,
+      task: selectedTask?.title || "General daily work",
+      taskId: selectedTask?.id || null
+    };
+
+    try {
+      await apiJson("/api/reports", {
+        method: "POST",
+        body: JSON.stringify(reportData)
+      });
+
+      setMessage("Report submitted to your manager.");
+      form.reset();
+      load();
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }
+
+  return (
+    <>
+      <Heading
+        title="Daily reports"
+        subtitle="Summarise the day, flag blockers, and plan tomorrow."
+      />
+
+      <form onSubmit={submit} className="card space-y-5 p-6">
+        <label>
+          <span className="label uppercase tracking-widest">
+            Task
+          </span>
+
+          <select name="taskId" className="input">
+            <option value="">
+              General daily work — no assigned task
+            </option>
+
+            {taskItems.map(task => (
+              <option key={task.id} value={task.id}>
+                {task.title}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="grid gap-4 sm:grid-cols-[1fr_150px]">
+          <label>
+            <span className="label uppercase tracking-widest">
+              Work completed
+            </span>
+
+            <textarea
+              name="workCompleted"
+              required
+              className="input min-h-28"
+              placeholder="What did you accomplish today?"
+            />
+          </label>
+
+          <label>
+            <span className="label uppercase tracking-widest">
+              Hours
+            </span>
+
+            <input
+              name="hours"
+              required
+              type="number"
+              min="0.5"
+              max="24"
+              step="0.5"
+              className="input"
+              placeholder="8"
+            />
+          </label>
+        </div>
+
+        <label>
+          <span className="label uppercase tracking-widest">
+            Problems / delays
+          </span>
+
+          <input
+            name="problems"
+            className="input"
+            placeholder="Optional"
+          />
+        </label>
+
+        <label>
+          <span className="label uppercase tracking-widest">
+            Tomorrow's plan
+          </span>
+
+          <input
+            name="tomorrowPlan"
+            className="input"
+            placeholder="Optional"
+          />
+        </label>
+
+        <button className="btn-primary w-full rounded-full py-4">
+          <Send className="h-4 w-4" />
+          Submit report
+        </button>
+
+        {message && (
+          <p className="rounded-xl bg-blue-50 p-3 text-sm text-blue-700">
+            {message}
+          </p>
+        )}
+      </form>
+
+      <h2 className="mt-8 text-sm font-bold uppercase tracking-widest text-slate-500">
+        Recent reports
+      </h2>
+
+      <div className="mt-3 space-y-3">
+        {items.map(item => (
+          <article key={item.id} className="card p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-bold">{item.workCompleted}</h3>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  {item.date} · {item.hours}h · {item.task}
+                </p>
+              </div>
+
+              <Pill status={item.status} />
+            </div>
+
+            {item.managerComment && (
+              <p className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">
+                <strong>Manager:</strong> {item.managerComment}
+              </p>
+            )}
+          </article>
+        ))}
+      </div>
+    </>
+  );
 }
 
 function Expenses() {
