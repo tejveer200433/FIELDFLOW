@@ -9,6 +9,7 @@ import ManagerAttendance from "@/components/ManagerAttendance";
 import { activity, attendanceRows, managerEmployees, managerExpenses, managerReports, managerTasks } from "@/lib/managerData";
 import { apiJson } from "@/lib/apiClient";
 import EmployeeDirectory from "@/components/EmployeeDirectory";
+import ProjectManagement from "@/components/ProjectManagement";
 
 const weekly = [
   { day: "Mon", tasks: 32 }, { day: "Tue", tasks: 41 }, { day: "Wed", tasks: 38 }, { day: "Thu", tasks: 47 },
@@ -178,7 +179,7 @@ export default function ManagerWorkspace({ section }) {
     if (!section) return <Dashboard />;
     if (section === "map") return <><PageHeading title="Live team map" subtitle="Select a technician to inspect their latest shared position." /><LiveTeamMap /></>;
     if (section === "employees") return <EmployeeDirectory />;
-    if (section === "tasks") return <TaskBoard />;
+    if (section === "tasks") return <ProjectManagement />;
     if (section === "reports") return <Reports />;
     if (section === "attendance") return <ManagerAttendance />;
     if (section === "expenses") return <Expenses />;

@@ -7,6 +7,7 @@ import { useEmployeeTracking } from "@/components/EmployeeTrackingContext";
 import EmployeeAttendance from "@/components/EmployeeAttendance";
 import { managerTasks } from "@/lib/managerData";
 import { apiJson } from "@/lib/apiClient";
+import EmployeeProjects from "@/components/EmployeeProjects";
 
 function useIdentity() {
   const [identity, setIdentity] = useState({ employeeId: "employee-demo", employee: "Employee" });
@@ -246,6 +247,6 @@ function Profile() { const identity = useIdentity(); const router = useRouter();
 }
 
 export default function EmployeeWorkspace({ section }) {
-  const content = useMemo(() => { if (!section) return <Home />; if (section === "tasks") return <Tasks />; if (section === "attendance") return <EmployeeAttendance />; if (section === "reports") return <Reports />; if (section === "expenses") return <Expenses />; if (section === "profile") return <Profile />; return <Home />; }, [section]);
+  const content = useMemo(() => { if (!section) return <Home />; if (section === "tasks") return <EmployeeProjects />; if (section === "attendance") return <EmployeeAttendance />; if (section === "reports") return <Reports />; if (section === "expenses") return <Expenses />; if (section === "profile") return <Profile />; return <Home />; }, [section]);
   return content;
 }

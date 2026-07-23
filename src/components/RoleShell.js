@@ -7,9 +7,9 @@ import { BarChart3, Bell, BriefcaseBusiness, ChevronLeft, CircleHelp, ClipboardL
 import { signOutUser, useAuthGuard } from "@/lib/authClient";
 
 const nav = {
-  employee: [["", "Dashboard", Zap], ["tasks", "My tasks", ClipboardList], ["attendance", "Attendance", Clock3], ["reports", "Daily reports", ReceiptText], ["expenses", "Expenses", BriefcaseBusiness], ["profile", "Profile", Settings]],
-  manager: [["", "Dashboard", Zap], ["map", "Live Map", Map], ["employees", "Employees", Users], ["tasks", "Task Board", ClipboardList], ["reports", "Reports", ReceiptText], ["attendance", "Attendance", Clock3], ["expenses", "Expenses", BriefcaseBusiness], ["analytics", "Analytics", BarChart3]],
-  admin: [["", "Overview", Zap], ["map", "Live Map", Map], ["employees", "Employees", Users], ["tasks", "Task Board", ClipboardList], ["reports", "Reports", ReceiptText], ["attendance", "Attendance", Clock3], ["expenses", "Expenses", BriefcaseBusiness], ["analytics", "Analytics", BarChart3], ["settings", "Settings", Settings]]
+  employee: [["", "Dashboard", Zap], ["tasks", "My project work", ClipboardList], ["attendance", "Attendance", Clock3], ["reports", "Daily reports", ReceiptText], ["expenses", "Expenses", BriefcaseBusiness], ["profile", "Profile", Settings]],
+  manager: [["", "Dashboard", Zap], ["map", "Live Map", Map], ["employees", "Employees", Users], ["tasks", "Projects", ClipboardList], ["reports", "Reports", ReceiptText], ["attendance", "Attendance", Clock3], ["expenses", "Expenses", BriefcaseBusiness], ["analytics", "Analytics", BarChart3]],
+  admin: [["", "Overview", Zap], ["map", "Live Map", Map], ["employees", "Employees", Users], ["tasks", "Projects", ClipboardList], ["reports", "Reports", ReceiptText], ["attendance", "Attendance", Clock3], ["expenses", "Expenses", BriefcaseBusiness], ["analytics", "Analytics", BarChart3], ["settings", "Settings", Settings]]
 };
 
 export default function RoleShell({ role, children }) {

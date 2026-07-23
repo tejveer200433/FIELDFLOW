@@ -7,7 +7,7 @@ import { Bell, ClipboardList, Grid2X2, LogOut, ReceiptText, UserRound } from "lu
 import { EmployeeTrackingProvider } from "@/components/EmployeeTrackingContext";
 import { signOutUser, useAuthGuard } from "@/lib/authClient";
 
-const nav = [["", "Home", Grid2X2], ["tasks", "Tasks", ClipboardList], ["attendance", "Attendance", Bell], ["reports", "Reports", ReceiptText], ["profile", "Me", UserRound]];
+const nav = [["", "Home", Grid2X2], ["tasks", "My Work", ClipboardList], ["attendance", "Attendance", Bell], ["reports", "Reports", ReceiptText], ["profile", "Me", UserRound]];
 
 export default function EmployeeShell({ children }) {
   const pathname = usePathname();

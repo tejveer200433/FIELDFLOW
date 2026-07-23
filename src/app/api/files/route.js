@@ -1,0 +1,2 @@
+import { ApiError,apiFailure,requireSession } from "@/lib/supabaseServer";
+export async function GET(request){try{const{client}=await requireSession(request,["employee","manager","admin"]);const path=new URL(request.url).searchParams.get("path");if(!path)throw new ApiError("File path is required.");const{data,error}=await client.storage.from("work-submissions").createSignedUrl(path,300);if(error)throw error;return Response.json({data:{url:data.signedUrl}});}catch(error){return apiFailure(error);}}

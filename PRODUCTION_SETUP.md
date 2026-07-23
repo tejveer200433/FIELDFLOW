@@ -6,8 +6,9 @@ The application no longer uses demo authentication or in-memory API data. It req
 
 1. Create a Supabase project.
 2. Open the SQL editor and run `supabase/migrations/202607220001_initial_production.sql`.
-3. In Authentication settings, configure the production Site URL and allowed redirect URLs.
-4. Copy `.env.example` to `.env.local` and enter the project URL and anon key. Never expose the service-role key in a variable beginning with `NEXT_PUBLIC_`.
+3. Run `supabase/migrations/202607230001_project_workflow.sql` to add projects, modules, private employee assignments, reviews, submissions, and the private work-file bucket.
+4. In Authentication settings, configure the production Site URL and allowed redirect URLs.
+5. Copy `.env.example` to `.env.local` and enter the project URL and anon key. Never expose the service-role key in a variable beginning with `NEXT_PUBLIC_`.
 
 ## 2. Bootstrap the first administrator
 
