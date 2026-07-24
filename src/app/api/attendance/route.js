@@ -1,4 +1,4 @@
-import { ApiError, apiFailure, requireSession } from "@/lib/supabaseServer";
+import { ApiError, apiFailure, assertUserInScope, requireAnyPermission, requirePermission, resolveUserScope } from "@/lib/supabaseServer";
 import { formatDuration } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
@@ -27,11 +27,16 @@ function throwRpcError(error) {
 
 export async function GET(request) {
   try {
-    const { client, profile } = await requireSession(request, ["employee", "manager", "admin"]);
+    const session = await requireAnyPermission(request, ["attendance.view_self", "attendance.view_team", "attendance.view_all"]);
+    const { client } = session;
+    const scope = await resolveUserScope(session, { self: "attendance.view_self", team: "attendance.view_team", all: "attendance.view_all" });
     let query = client.from("attendance_shifts").select(attendanceSelect).order("check_in_at", { ascending: false });
-    if (profile.role === "employee") query = query.eq("employee_id", profile.id);
+    if (scope.type !== "all") query = query.in("employee_id", scope.userIds);
     const requested = new URL(request.url).searchParams.get("employeeId");
-    if (requested && profile.role !== "employee") query = query.eq("employee_id", requested);
+    if (requested) {
+      assertUserInScope(scope, requested);
+      query = query.eq("employee_id", requested);
+    }
     const { data, error } = await query;
     if (error) throw error;
     return Response.json({ data: data.map(map) }, { headers: { "Cache-Control": "no-store" } });
@@ -40,7 +45,7 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const { client, profile } = await requireSession(request, ["employee"]);
+    const { client, profile } = await requirePermission(request, "attendance.view_self");
     const body = await request.json();
     if (!["check-in", "check-out"].includes(body.action) || !validLocation(body.location)) throw new ApiError("A valid action and GPS location are required.");
     let timeZone = String(body.timeZone || "Asia/Kolkata");

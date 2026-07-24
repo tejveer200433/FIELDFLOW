@@ -1,4 +1,4 @@
-import { ApiError, apiFailure, requireSession } from "@/lib/supabaseServer";
+import { ApiError, apiFailure, requireAnyPermission, requirePermission } from "@/lib/supabaseServer";
 
 export const dynamic = "force-dynamic";
 
@@ -52,9 +52,9 @@ function radius(value) {
 
 export async function GET(request) {
   try {
-    const { client, profile } = await requireSession(request, ["employee", "manager", "admin"]);
+    const { client, access } = await requireAnyPermission(request, ["attendance.view_self", "attendance.view_team", "attendance.view_all", "settings.manage"]);
     let query = client.from("attendance_locations").select(locationSelect).order("name");
-    if (profile.role !== "admin") query = query.eq("active", true);
+    if (!access.permissions.includes("settings.manage") && !access.isOwner) query = query.eq("active", true);
     const { data, error } = await query;
     if (error) throw error;
     return Response.json(
@@ -68,7 +68,7 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const { client, profile } = await requireSession(request, ["admin"]);
+    const { client, profile } = await requirePermission(request, "settings.manage");
     const body = await request.json();
     const values = {
       name: textName(body.name),
@@ -94,7 +94,7 @@ export async function POST(request) {
 
 export async function PATCH(request) {
   try {
-    const { client } = await requireSession(request, ["admin"]);
+    const { client } = await requirePermission(request, "settings.manage");
     const body = await request.json();
     if (!body.id) throw new ApiError("Select an attendance location to update.");
 

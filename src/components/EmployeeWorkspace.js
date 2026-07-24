@@ -8,6 +8,8 @@ import EmployeeAttendance from "@/components/EmployeeAttendance";
 import { managerTasks } from "@/lib/managerData";
 import { apiJson } from "@/lib/apiClient";
 import EmployeeProjects from "@/components/EmployeeProjects";
+import { useAccess } from "@/components/AccessContext";
+import { hasAnyPermission, hasPermission, PERMISSIONS } from "@/lib/permissions";
 
 function useIdentity() {
   const [identity, setIdentity] = useState({ employeeId: "employee-demo", employee: "Employee" });
@@ -20,6 +22,7 @@ function Pill({ status }) { const style = status === "Approved" || status === "C
 function Modal({ title, onClose, children }) { return <div className="fixed inset-0 z-[1000] grid place-items-center bg-slate-950/50 p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}><section className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl"><div className="flex justify-between"><h2 className="text-xl font-bold">{title}</h2><button onClick={onClose}><X /></button></div><div className="mt-5">{children}</div></section></div>; }
 
 function Home() {
+  const access = useAccess();
   const router = useRouter();
   const tracking = useEmployeeTracking();
   const window = { alert: async () => { try { const location=await tracking.getPosition(); await apiJson("/api/sos",{method:"POST",body:JSON.stringify({location,message:"Emergency assistance requested"})}); globalThis.alert("SOS sent to your manager and administrator with your GPS location."); } catch(error) { globalThis.alert(error.message); } } };
@@ -28,8 +31,17 @@ function Home() {
   const [completed, setCompleted] = useState(0);
   const [taskItems,setTaskItems]=useState([]);
   const managerTasks=taskItems.map(item=>({...item,employeeId:"e-1"}));
-  useEffect(() => { apiJson("/api/attendance", { cache: "no-store" }).then(payload => setOpenAttendance(payload.data.find(item => !item.checkOut) || null)); apiJson("/api/reports", { cache: "no-store" }).then(payload => setCompleted(payload.data.filter(item => item.status === "Approved").length)); apiJson("/api/tasks",{cache:"no-store"}).then(payload=>setTaskItems(payload.data)); }, [identity.employeeId]);
-  const actions = [["attendance", "Check In", LocateFixed, "bg-blue-500"], ["reports", "Report", Send, "bg-emerald-500"], ["expenses", "Expense", WalletCards, "bg-violet-500"], ["sos", "SOS", AlertTriangle, "bg-rose-500"]];
+  useEffect(() => {
+    if (hasPermission(access, PERMISSIONS.attendanceViewSelf)) apiJson("/api/attendance", { cache: "no-store" }).then(payload => setOpenAttendance(payload.data.find(item => !item.checkOut) || null)).catch(() => {});
+    if (hasPermission(access, PERMISSIONS.reportsSubmit)) apiJson("/api/reports", { cache: "no-store" }).then(payload => setCompleted(payload.data.filter(item => item.status === "Approved").length)).catch(() => {});
+    if (hasPermission(access, PERMISSIONS.tasksViewSelf)) apiJson("/api/tasks", { cache: "no-store" }).then(payload => setTaskItems(payload.data)).catch(() => {});
+  }, [access, identity.employeeId]);
+  const actions = [
+    ["attendance", "Check In", LocateFixed, "bg-blue-500", PERMISSIONS.attendanceViewSelf],
+    ["reports", "Report", Send, "bg-emerald-500", PERMISSIONS.reportsSubmit],
+    ["expenses", "Expense", WalletCards, "bg-violet-500", PERMISSIONS.expensesSubmit],
+    ["sos", "SOS", AlertTriangle, "bg-rose-500", PERMISSIONS.sosCreate]
+  ].filter(item => hasPermission(access, item[4]));
   return <><section className="card p-6 sm:p-8"><div className="flex items-center justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Good morning</p><h1 className="mt-1 text-2xl font-extrabold">{identity.employee}</h1></div><div className="text-right"><p className="text-xs uppercase tracking-widest text-slate-500">Status</p><Pill status={openAttendance ? "On Duty" : "Offline"} /></div></div><div className="mt-7 grid grid-cols-3 gap-3"><div className="rounded-3xl bg-slate-50 p-5 text-center"><strong className="text-2xl text-blue-600">2</strong><p className="text-xs uppercase tracking-widest text-slate-500">Today</p></div><div className="rounded-3xl bg-slate-50 p-5 text-center"><strong className="text-2xl text-emerald-600">{completed}</strong><p className="text-xs uppercase tracking-widest text-slate-500">Approved</p></div><div className="rounded-3xl bg-slate-50 p-5 text-center"><strong className="text-2xl text-violet-600">{openAttendance ? "Live" : "—"}</strong><p className="text-xs uppercase tracking-widest text-slate-500">Tracking</p></div></div><button onClick={() => router.push("/employee/attendance")} className="btn-secondary mt-5 w-full rounded-full"><Clock3 className="h-5 w-5" />{openAttendance ? "View attendance" : "Check in to start work"}</button></section><div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">{actions.map(([slug, label, Icon, color]) => <button key={slug} onClick={() => slug === "sos" ? window.alert("SOS noted. For an immediate emergency, call 112.") : router.push(`/employee/${slug}`)} className="card flex flex-col items-center gap-3 p-5 font-bold"><span className={`grid h-12 w-12 place-items-center rounded-full text-white ${color}`}><Icon /></span>{label}</button>)}</div><div className="mt-7 flex justify-between"><h2 className="text-sm font-bold uppercase tracking-widest text-slate-500">Today's tasks</h2><button onClick={() => router.push("/employee/tasks")} className="text-sm font-bold text-blue-600">See all</button></div><div className="mt-3 space-y-3">{managerTasks.filter(task => task.employeeId === "e-1").slice(0, 2).map(task => <button onClick={() => router.push("/employee/tasks")} key={task.id} className="card flex w-full items-center gap-4 p-5 text-left"><span className="grid h-12 w-12 place-items-center rounded-full bg-blue-50 text-blue-600"><ReceiptText /></span><div><h3 className="font-bold">{task.title}</h3><p className="mt-1 text-sm text-slate-500">{task.client} · {task.address}</p><div className="mt-2"><Pill status={task.status} /></div></div><ChevronRight className="ml-auto text-slate-400" /></button>)}</div></>;
 }
 
@@ -246,7 +258,29 @@ function Tasks() {
 function Profile() { const identity = useIdentity(); const router = useRouter(); return <><Heading title="My profile" subtitle="Your FieldFlow employee account." /><section className="card p-7 text-center"><div className="mx-auto grid h-24 w-24 place-items-center rounded-full bg-blue-100 text-3xl font-bold text-blue-700">{identity.employee.charAt(0)}</div><h2 className="mt-4 text-2xl font-bold">{identity.employee}</h2><p className="text-slate-500">{typeof window !== "undefined" ? localStorage.getItem("fieldflow-user") : ""}</p><button onClick={() => router.push("/employee/expenses")} className="btn-secondary mt-6">View expenses</button></section></>;
 }
 
+function EmployeeWork({ access }) {
+  return <div className="space-y-10">
+    {hasPermission(access, PERMISSIONS.projectsViewSelf) && <EmployeeProjects />}
+    {hasPermission(access, PERMISSIONS.tasksViewSelf) && <Tasks />}
+  </div>;
+}
+
 export default function EmployeeWorkspace({ section }) {
-  const content = useMemo(() => { if (!section) return <Home />; if (section === "tasks") return <EmployeeProjects />; if (section === "attendance") return <EmployeeAttendance />; if (section === "reports") return <Reports />; if (section === "expenses") return <Expenses />; if (section === "profile") return <Profile />; return <Home />; }, [section]);
+  const access = useAccess();
+  const content = useMemo(() => {
+    if (!access) return null;
+    if (!section) {
+      if (hasPermission(access, PERMISSIONS.dashboardView)) return <Home />;
+      if (hasAnyPermission(access, [PERMISSIONS.projectsViewSelf, PERMISSIONS.tasksViewSelf])) return <EmployeeWork access={access} />;
+      if (hasPermission(access, PERMISSIONS.attendanceViewSelf)) return <EmployeeAttendance />;
+      return <Profile />;
+    }
+    if (section === "tasks" && hasAnyPermission(access, [PERMISSIONS.projectsViewSelf, PERMISSIONS.tasksViewSelf])) return <EmployeeWork access={access} />;
+    if (section === "attendance" && hasPermission(access, PERMISSIONS.attendanceViewSelf)) return <EmployeeAttendance />;
+    if (section === "reports" && hasPermission(access, PERMISSIONS.reportsSubmit)) return <Reports />;
+    if (section === "expenses" && hasPermission(access, PERMISSIONS.expensesSubmit)) return <Expenses />;
+    if (section === "profile") return <Profile />;
+    return <section className="card p-10 text-center"><h1 className="text-xl font-bold">Module not available</h1><p className="mt-2 text-slate-500">Your assigned role does not include permission for this module.</p></section>;
+  }, [access, section]);
   return content;
 }

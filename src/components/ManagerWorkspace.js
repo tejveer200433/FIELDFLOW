@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, CheckCircle2, ClipboardList, Clock3, Download, MapPin, Plus, Search, UserPlus, UsersRound, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, ClipboardList, Clock3, Download, MapPin, Plus, Search, ShieldCheck, UserPlus, UsersRound, X } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import LiveTeamMap from "@/components/LiveTeamMap";
 import ManagerAttendance from "@/components/ManagerAttendance";
@@ -11,6 +11,9 @@ import { apiJson } from "@/lib/apiClient";
 import EmployeeDirectory from "@/components/EmployeeDirectory";
 import ProjectManagement from "@/components/ProjectManagement";
 import AttendanceLocations from "@/components/AttendanceLocations";
+import RolesPermissionsSettings from "@/components/RolesPermissionsSettings";
+import { useAccess } from "@/components/AccessContext";
+import { hasAnyPermission, hasPermission, PERMISSIONS } from "@/lib/permissions";
 
 const weekly = [
   { day: "Mon", tasks: 32 }, { day: "Tue", tasks: 41 }, { day: "Wed", tasks: 38 }, { day: "Thu", tasks: 47 },
@@ -53,10 +56,25 @@ function Metric({ label, value, icon: Icon, tone, trend }) {
   return <div className="card p-6"><div className="flex items-start justify-between"><div><p className="text-xs font-semibold uppercase tracking-widest text-slate-500">{label}</p><p className="mt-3 text-3xl font-extrabold text-slate-950">{value}</p>{trend && <p className={`mt-2 text-xs font-bold ${trend.startsWith("-") ? "text-rose-600" : "text-emerald-600"}`}>{trend.startsWith("-") ? "↘" : "↗"} {trend.replace("-", "")} vs last week</p>}</div><span className={`grid h-12 w-12 place-items-center rounded-full ${tone}`}><Icon className="h-5 w-5" /></span></div></div>;
 }
 
-function Dashboard() {
+function Dashboard({ access }) {
   const router = useRouter();
   const [snapshot,setSnapshot]=useState({tasks:[],attendance:[],employees:[],sos:[]});
-  useEffect(()=>{Promise.all([apiJson("/api/tasks"),apiJson("/api/attendance"),apiJson("/api/employees"),apiJson("/api/sos")]).then(([tasksResult,attendanceResult,employeesResult,sosResult])=>setSnapshot({tasks:tasksResult.data,attendance:attendanceResult.data,employees:employeesResult.data,sos:sosResult.data}));},[]);
+  useEffect(() => {
+    const allowed = (permissions, endpoint) => hasAnyPermission(access, permissions)
+      ? apiJson(endpoint).catch(() => ({ data: [] }))
+      : Promise.resolve({ data: [] });
+    Promise.all([
+      allowed([PERMISSIONS.tasksAssign, PERMISSIONS.tasksManageAll], "/api/tasks"),
+      allowed([PERMISSIONS.attendanceViewTeam, PERMISSIONS.attendanceViewAll], "/api/attendance"),
+      allowed([PERMISSIONS.employeesViewAll, PERMISSIONS.tasksAssign], "/api/employees"),
+      allowed([PERMISSIONS.sosViewTeam], "/api/sos")
+    ]).then(([tasksResult, attendanceResult, employeesResult, sosResult]) => setSnapshot({
+      tasks: tasksResult.data,
+      attendance: attendanceResult.data,
+      employees: employeesResult.data,
+      sos: sosResult.data
+    }));
+  }, [access]);
   const managerTasks=[...snapshot.sos.map(alert=>({id:alert.id,title:`SOS · ${alert.employee}`,employee:alert.employee,client:alert.message,address:`${alert.latitude}, ${alert.longitude}`,priority:"Urgent",status:"Blocked",updatedAt:alert.createdAt})),...snapshot.tasks];
   const onDuty=new Set(snapshot.attendance.filter(item=>!item.checkOut).map(item=>item.employeeId)).size;
   const hours=Array.from(snapshot.attendance.reduce((groups,item)=>{if(item.date===new Date().toISOString().slice(0,10)){const current=groups.get(item.employee)||0;groups.set(item.employee,current+(item.durationSeconds||0)/3600);}return groups;},new Map()),([name,value])=>({name:name.split(" ")[0],value:Number(value.toFixed(2))}));
@@ -65,7 +83,7 @@ function Dashboard() {
   return <>
     <PageHeading title="Operations dashboard" subtitle="Live pulse of your field team." />
     <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-      <Metric label="On duty" value={`${onDuty} / ${snapshot.employees.filter(item=>item.role==="employee").length}`} icon={UsersRound} tone="bg-teal-50 text-teal-600" />
+      <Metric label="On duty" value={`${onDuty} / ${snapshot.employees.length}`} icon={UsersRound} tone="bg-teal-50 text-teal-600" />
       <Metric label="In progress" value={managerTasks.filter(item=>item.status==="In Progress").length} icon={ClipboardList} tone="bg-blue-50 text-blue-600" />
       <Metric label="Completed" value={managerTasks.filter(item=>item.status==="Completed").length} icon={CheckCircle2} tone="bg-emerald-50 text-emerald-600" />
       <Metric label="Blocked" value={managerTasks.filter(item=>item.status==="Blocked").length} icon={AlertTriangle} tone="bg-rose-50 text-rose-600" />
@@ -105,11 +123,12 @@ function TaskBoard() {
   const [items, setItems] = useState([]);
   const [adding, setAdding] = useState(false);
   const [employees,setEmployees]=useState([]);
+  const [error, setError] = useState("");
   const managerEmployees = employees.length ? employees : [{ id: "", name: "No approved employees yet" }];
-  useEffect(()=>{apiJson("/api/tasks").then(payload=>setItems(payload.data));apiJson("/api/employees").then(payload=>setEmployees(payload.data.filter(item=>item.role==="employee"&&item.approvalStatus==="approved")));},[]);
-  async function drop(event, status) { event.preventDefault(); const id = event.dataTransfer.getData("text/plain"); const payload=await apiJson("/api/tasks",{method:"PATCH",body:JSON.stringify({id,status})}); setItems(current => current.map(item => item.id === id ? payload.data : item)); }
-  async function add(event) { event.preventDefault(); const data = Object.fromEntries(new FormData(event.currentTarget)); if(!data.employeeId){window.alert("Create or approve an employee account before assigning a task.");return;} try{const payload=await apiJson("/api/tasks",{method:"POST",body:JSON.stringify(data)});setItems(current=>[payload.data,...current]);setAdding(false);}catch(error){window.alert(error.message);} }
-  return <><PageHeading title="Task board" subtitle="Drag tasks between columns to update status." action={<button onClick={() => setAdding(true)} className="btn-primary rounded-full px-7 py-4 text-base"><Plus className="h-5 w-5" />Assign task</button>} /><div className="grid gap-4 overflow-x-auto xl:grid-cols-5">{columns.map(column => { const columnItems = items.filter(item => item.status === column); return <section key={column} onDragOver={event => event.preventDefault()} onDrop={event => drop(event, column)} className="min-h-[500px] min-w-[250px] rounded-3xl border border-dashed border-slate-200 bg-slate-50/60 p-4"><div className="mb-4 flex items-center gap-3"><Pill tone={toneFor(column)}>{column}</Pill><span className="text-sm font-bold text-slate-500">{columnItems.length}</span></div><div className="space-y-3">{columnItems.map(task => <article draggable onDragStart={event => event.dataTransfer.setData("text/plain", task.id)} key={task.id} className="cursor-grab rounded-2xl border border-slate-200 bg-white p-4 shadow-sm active:cursor-grabbing"><div className="flex items-start justify-between gap-2"><h3 className="truncate font-bold" title={task.title}>{task.title}</h3><Pill tone={toneFor(task.priority)}>{task.priority}</Pill></div><p className="mt-2 text-sm text-slate-500">{task.client}</p><p className="mt-2 flex items-center gap-1 text-xs text-slate-500"><MapPin className="h-3.5 w-3.5" />{task.address}</p><p className="mt-4 text-sm font-medium">{task.employee}</p></article>)}</div></section>; })}</div>
+  useEffect(()=>{Promise.all([apiJson("/api/tasks"),apiJson("/api/employees")]).then(([taskPayload,employeePayload])=>{setItems(taskPayload.data);setEmployees(employeePayload.data.filter(item=>item.approvalStatus==="approved"));setError("");}).catch(failure=>setError(failure.message));},[]);
+  async function drop(event, status) { event.preventDefault(); const id = event.dataTransfer.getData("text/plain"); try { const payload=await apiJson("/api/tasks",{method:"PATCH",body:JSON.stringify({id,status})}); setItems(current => current.map(item => item.id === id ? payload.data : item)); setError(""); } catch (failure) { setError(failure.message); } }
+  async function add(event) { event.preventDefault(); const data = Object.fromEntries(new FormData(event.currentTarget)); if(!data.employeeId){setError("Create or approve an employee account before assigning a task.");return;} try{const payload=await apiJson("/api/tasks",{method:"POST",body:JSON.stringify(data)});setItems(current=>[payload.data,...current]);setAdding(false);setError("");}catch(failure){setError(failure.message);} }
+  return <><PageHeading title="Task board" subtitle="Drag tasks between columns to update status." action={<button onClick={() => setAdding(true)} className="btn-primary rounded-full px-7 py-4 text-base"><Plus className="h-5 w-5" />Assign task</button>} />{error && <p className="mb-5 rounded-2xl bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</p>}<div className="grid gap-4 overflow-x-auto xl:grid-cols-5">{columns.map(column => { const columnItems = items.filter(item => item.status === column); return <section key={column} onDragOver={event => event.preventDefault()} onDrop={event => drop(event, column)} className="min-h-[500px] min-w-[250px] rounded-3xl border border-dashed border-slate-200 bg-slate-50/60 p-4"><div className="mb-4 flex items-center gap-3"><Pill tone={toneFor(column)}>{column}</Pill><span className="text-sm font-bold text-slate-500">{columnItems.length}</span></div><div className="space-y-3">{columnItems.map(task => <article draggable onDragStart={event => event.dataTransfer.setData("text/plain", task.id)} key={task.id} className="cursor-grab rounded-2xl border border-slate-200 bg-white p-4 shadow-sm active:cursor-grabbing"><div className="flex items-start justify-between gap-2"><h3 className="truncate font-bold" title={task.title}>{task.title}</h3><Pill tone={toneFor(task.priority)}>{task.priority}</Pill></div><p className="mt-2 text-sm text-slate-500">{task.client}</p><p className="mt-2 flex items-center gap-1 text-xs text-slate-500"><MapPin className="h-3.5 w-3.5" />{task.address}</p><p className="mt-4 text-sm font-medium">{task.employee}</p></article>)}</div></section>; })}</div>
     {adding && <Modal title="Assign task" onClose={() => setAdding(false)}><form onSubmit={add} className="space-y-4"><label><span className="label">Task title</span><input name="title" required className="input" /></label><label><span className="label">Employee</span><select name="employeeId" className="input">{managerEmployees.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label><span className="label">Client</span><input name="client" required className="input" /></label><label><span className="label">Site/address</span><input name="address" required className="input" /></label><label><span className="label">Priority</span><select name="priority" className="input"><option>Low</option><option>Medium</option><option>High</option><option>Urgent</option></select></label><button className="btn-primary w-full">Create assignment</button></form></Modal>}
   </>;
 }
@@ -137,7 +156,7 @@ function LegacyExpenses() {
 
 function Analytics() {
   const [analyticsData,setAnalyticsData]=useState({tasks:[],employees:[]});
-  useEffect(()=>{Promise.all([apiJson("/api/tasks"),apiJson("/api/employees")]).then(([taskResult,employeeResult])=>setAnalyticsData({tasks:taskResult.data,employees:employeeResult.data.filter(item=>item.role==="employee")}));},[]);
+  useEffect(()=>{Promise.all([apiJson("/api/tasks"),apiJson("/api/employees")]).then(([taskResult,employeeResult])=>setAnalyticsData({tasks:taskResult.data,employees:employeeResult.data}));},[]);
   const taskMix=["Assigned","On The Way","In Progress","Completed","Blocked"].map((name,index)=>({name,value:analyticsData.tasks.filter(item=>item.status===name).length,color:["#64748b","#8b5cf6","#3b82f6","#10b981","#f43f5e"][index]})).filter(item=>item.value);
   const performance=analyticsData.employees.map(employee=>{const assigned=analyticsData.tasks.filter(task=>task.employeeId===employee.id);return{name:employee.name.split(" ")[0],value:assigned.length?Math.round(assigned.filter(task=>task.status==="Completed").length/assigned.length*100):0};});
   const throughput=Array.from({length:14},(_,offset)=>{const date=new Date();date.setDate(date.getDate()-(13-offset));const key=date.toISOString().slice(0,10);const changed=analyticsData.tasks.filter(item=>item.updatedAt?.slice(0,10)===key);const done=changed.filter(item=>item.status==="Completed").length;return{day:`D${offset+1}`,tasks:done,sla:changed.length?Math.round(done/changed.length*100):100};});
@@ -175,18 +194,32 @@ function Expenses() {
   return <><PageHeading title="Expenses" subtitle="Employee submissions appear here for approval." /><div className="mb-5 flex flex-wrap gap-2">{["All", "Pending", "Approved", "Rejected"].map(item => <button key={item} onClick={() => setFilter(item)} className={filter === item ? "btn-primary rounded-full" : "btn-secondary rounded-full"}>{item}</button>)}</div><div className="card overflow-x-auto"><table className="min-w-full text-left"><thead className="bg-slate-50 text-xs uppercase tracking-widest text-slate-500"><tr><th className="px-5 py-4">Employee</th><th>Type</th><th>Date</th><th>Note</th><th>Amount</th><th>Status</th><th>Decision</th></tr></thead><tbody>{visible.map(item => <tr className="border-t" key={item.id}><td className="px-5 py-5 font-bold">{item.employee}</td><td>{item.type}</td><td>{item.date}</td><td>{item.note}</td><td className="font-bold">₹{item.amount.toLocaleString("en-IN")}</td><td><Pill tone={toneFor(item.status)}>{item.status}</Pill></td><td className="min-w-64 py-3 pr-4"><input value={comments[item.id] || ""} onChange={event => setComments(current => ({ ...current, [item.id]: event.target.value }))} className="input mb-2 py-2" placeholder="Comment" /><div className="flex gap-3"><button className="text-sm font-bold text-emerald-600" onClick={() => decide(item.id, "Approved")}>Approve</button><button className="text-sm font-bold text-rose-600" onClick={() => decide(item.id, "Rejected")}>Reject</button></div></td></tr>)}</tbody></table></div></>;
 }
 
+function NoAccess() {
+  return <section className="card p-10 text-center"><ShieldCheck className="mx-auto h-10 w-10 text-slate-400" /><h1 className="mt-4 text-xl font-bold">Module not available</h1><p className="mt-2 text-slate-500">Your assigned role does not include permission for this module.</p></section>;
+}
+
 export default function ManagerWorkspace({ section, role = "manager" }) {
+  const access = useAccess();
   const content = useMemo(() => {
-    if (!section) return <Dashboard />;
-    if (section === "map") return <><PageHeading title="Live team map" subtitle="Select a technician to inspect their latest shared position." /><LiveTeamMap /></>;
-    if (section === "employees") return <EmployeeDirectory />;
-    if (section === "tasks") return <ProjectManagement />;
-    if (section === "reports") return <Reports />;
-    if (section === "attendance") return <ManagerAttendance />;
-    if (section === "expenses") return <Expenses />;
-    if (section === "analytics") return <Analytics />;
-    if (section === "settings" && role === "admin") return <AttendanceLocations />;
-    return <Dashboard />;
-  }, [role, section]);
+    if (!access) return null;
+    if (!section) {
+      if (hasPermission(access, PERMISSIONS.dashboardView)) return <Dashboard access={access} />;
+      if (hasAnyPermission(access, [PERMISSIONS.tasksAssign, PERMISSIONS.tasksManageAll])) return <TaskBoard />;
+      if (hasAnyPermission(access, [PERMISSIONS.locationsViewTeam, PERMISSIONS.locationsViewAll])) return <><PageHeading title="Live team map" subtitle="Only users in your permitted scope are shown." /><LiveTeamMap /></>;
+      if (hasPermission(access, PERMISSIONS.reportsReview)) return <Reports />;
+      return <NoAccess />;
+    }
+    if (section === "map" && hasAnyPermission(access, [PERMISSIONS.locationsViewTeam, PERMISSIONS.locationsViewAll])) return <><PageHeading title="Live team map" subtitle="Only users in your permitted scope are shown." /><LiveTeamMap /></>;
+    if (section === "employees" && hasAnyPermission(access, [PERMISSIONS.employeesViewAll, PERMISSIONS.employeesManage, PERMISSIONS.tasksAssign, PERMISSIONS.teamsManage, PERMISSIONS.rolesManage])) return <EmployeeDirectory />;
+    if (section === "field-tasks" && hasAnyPermission(access, [PERMISSIONS.tasksAssign, PERMISSIONS.tasksManageAll])) return <TaskBoard />;
+    if (section === "tasks" && hasAnyPermission(access, [PERMISSIONS.projectsManage, PERMISSIONS.projectsReview])) return <ProjectManagement />;
+    if (section === "reports" && hasPermission(access, PERMISSIONS.reportsReview)) return <Reports />;
+    if (section === "attendance" && hasAnyPermission(access, [PERMISSIONS.attendanceViewTeam, PERMISSIONS.attendanceViewAll])) return <ManagerAttendance />;
+    if (section === "expenses" && hasPermission(access, PERMISSIONS.expensesApprove)) return <Expenses />;
+    if (section === "analytics" && hasPermission(access, PERMISSIONS.employeesViewAll)) return <Analytics />;
+    if (section === "attendance-locations" && role === "admin" && hasPermission(access, PERMISSIONS.settingsManage)) return <AttendanceLocations />;
+    if (section === "settings" && role === "admin" && hasAnyPermission(access, [PERMISSIONS.rolesManage, PERMISSIONS.teamsManage])) return <RolesPermissionsSettings />;
+    return <NoAccess />;
+  }, [access, role, section]);
   return content;
 }

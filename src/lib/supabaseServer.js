@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { hasPermission, legacyAccess } from "@/lib/permissions";
 
 export class ApiError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
@@ -20,7 +21,65 @@ export async function requireSession(request, roles = []) {
   if (profileError || !profile) throw new ApiError("Your FieldFlow profile is not available.", 403);
   if (!profile.active || profile.approval_status !== "approved") throw new ApiError("This account is waiting for administrator approval.", 403);
   if (roles.length && !roles.includes(profile.role)) throw new ApiError("You do not have permission for this action.", 403);
-  return { client, user: auth.user, profile };
+  const { data: accessData, error: accessError } = await client.rpc("get_my_access_context");
+  const access = accessError || !accessData
+    ? legacyAccess(profile.role)
+    : {
+        isOwner: Boolean(accessData.isOwner),
+        legacyRole: accessData.legacyRole || profile.role,
+        role: accessData.role || null,
+        permissions: Array.isArray(accessData.permissions) ? accessData.permissions : []
+      };
+  return { client, user: auth.user, profile: { ...profile, access }, access };
+}
+
+export async function requirePermission(request, permission) {
+  const session = await requireSession(request);
+  if (!hasPermission(session.access, permission)) {
+    throw new ApiError("You do not have permission for this action.", 403);
+  }
+  return session;
+}
+
+export async function requireAnyPermission(request, permissions) {
+  const session = await requireSession(request);
+  if (!permissions.some(permission => hasPermission(session.access, permission))) {
+    throw new ApiError("You do not have permission for this action.", 403);
+  }
+  return session;
+}
+
+export async function requireOwner(request) {
+  const session = await requirePermission(request, "roles.manage");
+  if (!session.access.isOwner) {
+    throw new ApiError("Only the protected workspace Owner can perform this action.", 403);
+  }
+  return session;
+}
+
+export async function getTeamMemberIds({ client }) {
+  const { data, error } = await client.rpc("get_my_team_member_ids");
+  if (error) throw error;
+  return (data || []).map(item => item.user_id);
+}
+
+export async function resolveUserScope(session, permissions) {
+  if (permissions.all && hasPermission(session.access, permissions.all)) {
+    return { type: "all", userIds: null };
+  }
+  if (permissions.team && hasPermission(session.access, permissions.team)) {
+    return { type: "team", userIds: await getTeamMemberIds(session) };
+  }
+  if (permissions.self && hasPermission(session.access, permissions.self)) {
+    return { type: "self", userIds: [session.profile.id] };
+  }
+  throw new ApiError("You do not have permission for this action.", 403);
+}
+
+export function assertUserInScope(scope, userId) {
+  if (scope.type !== "all" && !scope.userIds.includes(userId)) {
+    throw new ApiError("You can only access users within your permitted scope.", 403);
+  }
 }
 
 export function apiFailure(error) {
@@ -30,5 +89,17 @@ export function apiFailure(error) {
 }
 
 export function mapProfile(profile) {
-  return { id: profile.id, name: profile.full_name, email: profile.email, role: profile.role, requestedRole: profile.requested_role, department: profile.department, approvalStatus: profile.approval_status, active: profile.active };
+  return {
+    id: profile.id,
+    name: profile.full_name,
+    email: profile.email,
+    role: profile.role,
+    requestedRole: profile.requested_role,
+    department: profile.department,
+    approvalStatus: profile.approval_status,
+    active: profile.active,
+    isOwner: Boolean(profile.access?.isOwner),
+    dynamicRole: profile.access?.role || null,
+    permissions: profile.access?.permissions || []
+  };
 }
