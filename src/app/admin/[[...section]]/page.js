@@ -6,5 +6,5 @@ import RoleShell from "@/components/RoleShell";
 
 export default function AdminPage() {
   const { section = [] } = useParams();
-  return <RoleShell role="admin"><ManagerWorkspace section={section[0] || ""} /></RoleShell>;
+  return <RoleShell role="admin"><ManagerWorkspace role="admin" section={section[0] || ""} /></RoleShell>;
 }
