@@ -1,31 +1,56 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Clock3, MapPin, Radio, TimerReset } from "lucide-react";
+import { CalendarRange, Clock3, Coffee, MapPin, Radio, TimerReset } from "lucide-react";
 import { useEmployeeTracking } from "@/components/EmployeeTrackingContext";
 import { durationSeconds, formatDuration } from "@/lib/time";
 import { apiJson } from "@/lib/apiClient";
+import EmployeeAttendanceRequests from "@/components/EmployeeAttendanceRequests";
 
 function Status({ value }) {
   return <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${value === "Late" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{value}</span>;
 }
 
-export default function EmployeeAttendance() {
+function localDate(value) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(value);
+  const part = type => parts.find(item => item.type === type)?.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function scheduledTime(record) {
+  if (!record?.scheduledStartAt || !record?.scheduledEndAt) return null;
+  const options = {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: record.timeZone
+  };
+  return `${new Date(record.scheduledStartAt).toLocaleTimeString([], options)}–${new Date(record.scheduledEndAt).toLocaleTimeString([], options)}`;
+}
+
+function AttendanceToday() {
   const tracking = useEmployeeTracking();
   const [identity, setIdentity] = useState({ employeeId: "employee-demo", employee: "Employee" });
   const [records, setRecords] = useState([]);
   const [locations, setLocations] = useState([]);
+  const [management, setManagement] = useState({ breaks: [], schedules: [], rosters: [], holidays: [], templates: [] });
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
   const load = useCallback(async () => {
-    const [attendance, attendanceLocations] = await Promise.all([
+    const [attendance, attendanceLocations, attendanceManagement] = await Promise.all([
       apiJson("/api/attendance", { cache: "no-store" }),
-      apiJson("/api/attendance-locations", { cache: "no-store" })
+      apiJson("/api/attendance-locations", { cache: "no-store" }),
+      apiJson("/api/attendance-management", { cache: "no-store" })
     ]);
     setRecords(attendance.data);
     setLocations(attendanceLocations.data);
+    setManagement(attendanceManagement.data);
   }, []);
 
   useEffect(() => {
@@ -44,6 +69,19 @@ export default function EmployeeAttendance() {
   }, [load]);
 
   const open = records.find(item => !item.checkOutAt && !item.checkOut);
+  const activeBreak = management.breaks.find(item => !item.endedAt);
+  const today = localDate(new Date(now));
+  const roster = management.rosters.find(item => item.workDate === today);
+  const regularSchedule = management.schedules.find(item =>
+    item.effectiveFrom <= today
+    && (!item.effectiveTo || item.effectiveTo >= today)
+  );
+  const schedule = roster || regularSchedule;
+  const scheduleTemplate = management.templates.find(item => item.id === schedule?.shiftTemplateId);
+  const weeklyOff = !roster && regularSchedule && (
+    !regularSchedule.weekdays.includes(new Date(now).getDay())
+    || scheduleTemplate?.weeklyOffDays.includes(new Date(now).getDay())
+  );
   const openSeconds = open ? durationSeconds(open, now) : 0;
   const days = useMemo(() => {
     const grouped = new Map();
@@ -80,7 +118,9 @@ export default function EmployeeAttendance() {
       });
       if (action === "check-out") await tracking.stopTracking();
       setMessage(action === "check-in"
-        ? `Checked in at ${payload.data.checkInLocation.geofenceName || "an attendance location"}. Your work timer and live location are running.`
+        ? payload.data.shiftName
+          ? `Checked in for ${payload.data.shiftName} (${scheduledTime(payload.data)}). Status: ${payload.data.status}.`
+          : `Checked in at ${payload.data.checkInLocation.geofenceName || "an attendance location"}, but no work schedule was assigned for today.`
         : `Checked out. Total shift time: ${payload.data.hours}.`);
       await load();
     } catch (error) {
@@ -91,12 +131,24 @@ export default function EmployeeAttendance() {
     }
   }
 
-  return <>
-    <div className="mb-7">
-      <h1 className="text-3xl font-extrabold sm:text-4xl">Attendance</h1>
-      <p className="mt-2 text-slate-500">Exact GPS-verified work time for every day.</p>
-    </div>
+  async function breakAction() {
+    setBusy(true);
+    setMessage("");
+    try {
+      const payload = await apiJson("/api/attendance-management", {
+        method: "POST",
+        body: JSON.stringify({ action: activeBreak ? "break-end" : "break-start" })
+      });
+      setMessage(payload.message);
+      await load();
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
+  return <>
     <section className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5">
       <div className="flex items-start gap-3">
         <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
@@ -107,6 +159,20 @@ export default function EmployeeAttendance() {
             ? <div className="mt-3 flex flex-wrap gap-2">{locations.map(location => <span key={location.id} className="rounded-full border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-800">{location.name} · {location.radiusM.toLocaleString()} m</span>)}</div>
             : <p className="mt-3 text-sm font-semibold text-amber-700">Attendance is not configured yet. Ask an administrator to add an office or site location.</p>}
         </div>
+      </div>
+    </section>
+
+    <section className="card mb-6 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className="grid h-11 w-11 place-items-center rounded-full bg-violet-50 text-violet-600"><CalendarRange className="h-5 w-5" /></span>
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Today&apos;s plan</p>
+            <strong>{schedule?.shiftName || "No assigned shift"}</strong>
+            <p className="text-xs text-slate-500">{scheduleTemplate ? `${scheduleTemplate.startTime}–${scheduleTemplate.endTime} · ${scheduleTemplate.graceMinutes} min grace` : roster ? "Daily roster override" : schedule ? "Regular work schedule" : "Default attendance policy"}</p>
+          </div>
+        </div>
+        {(weeklyOff || management.holidays.some(item => item.date === today)) && <span className="rounded-full bg-violet-50 px-3 py-2 text-sm font-bold text-violet-700">{weeklyOff ? "Weekly off" : "Holiday"}</span>}
       </div>
     </section>
 
@@ -125,16 +191,21 @@ export default function EmployeeAttendance() {
         </div>}
       </div>
 
-      {open && <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {open && <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs uppercase tracking-widest text-slate-500">Check-in</p><strong>{open.checkIn}</strong></div>
         <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs uppercase tracking-widest text-slate-500">Started</p><strong>{open.checkInAt ? new Date(open.checkInAt).toLocaleString() : `${open.date} ${open.checkIn}`}</strong></div>
+        <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs uppercase tracking-widest text-slate-500">Applied shift</p><strong>{open.shiftName || "No schedule"}</strong></div>
+        <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs uppercase tracking-widest text-slate-500">Scheduled</p><strong>{scheduledTime(open) || "Not assigned"}</strong></div>
+        <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs uppercase tracking-widest text-slate-500">Arrival status</p><Status value={open.status} /></div>
         <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs uppercase tracking-widest text-slate-500">GPS accuracy</p><strong>{open.checkInLocation?.accuracy ? `${Math.round(open.checkInLocation.accuracy)} metres` : "Recorded"}</strong></div>
-        <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs uppercase tracking-widest text-slate-500">Geofence</p><strong>{open.checkInLocation?.geofenceName || "Recorded"}</strong>{open.checkInLocation?.distanceM != null && <p className="text-xs text-slate-500">{Math.round(open.checkInLocation.distanceM)} m from location</p>}</div>
       </div>}
+      {open && <div className="mt-3 rounded-2xl bg-slate-50 p-4"><p className="text-xs uppercase tracking-widest text-slate-500">Verified geofence</p><strong>{open.checkInLocation?.geofenceName || "Recorded"}</strong>{open.checkInLocation?.distanceM != null && <span className="ml-2 text-xs text-slate-500">{Math.round(open.checkInLocation.distanceM)} m from location</span>}</div>}
 
       <button disabled={busy} onClick={() => act(open ? "check-out" : "check-in")} className={`mt-5 w-full rounded-2xl px-5 py-4 font-bold text-white disabled:opacity-50 ${open ? "bg-rose-500" : "bg-blue-600"}`}>
         {busy ? "Getting GPS location…" : open ? `Check out · ${formatDuration(openSeconds)}` : "Check in with GPS"}
       </button>
+      {open && <button disabled={busy} onClick={breakAction} className={`mt-3 w-full rounded-2xl border px-5 py-3.5 font-bold disabled:opacity-50 ${activeBreak ? "border-amber-300 bg-amber-50 text-amber-700" : "border-slate-200 bg-white text-slate-700"}`}><Coffee className="mr-2 inline h-5 w-5" />{activeBreak ? `End break · started ${new Date(activeBreak.startedAt).toLocaleTimeString()}` : "Start break"}</button>}
+      {open?.missedCheckout && <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-700">Your scheduled shift has ended and checkout is overdue. Please end any active break and check out now.</p>}
       <p className="mt-3 text-center text-sm text-slate-500">Your location is verified securely before the attendance record is changed.</p>
       {message && <p aria-live="polite" className="mt-3 rounded-xl bg-blue-50 p-3 text-sm text-blue-700">{message}</p>}
     </section>
@@ -162,14 +233,30 @@ export default function EmployeeAttendance() {
           <strong className="text-xl text-blue-700">{formatDuration(day.totalSeconds)}</strong>
         </div>
         <div className="divide-y">
-          {day.shifts.map(shift => <div key={shift.id} className="grid gap-3 px-5 py-4 sm:grid-cols-[1fr_1fr_1fr_auto]">
+          {day.shifts.map(shift => <div key={shift.id} className="grid gap-3 px-5 py-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1.2fr_1fr_auto]">
             <div><p className="text-xs text-slate-500">Check-in</p><strong>{shift.checkIn}</strong></div>
             <div><p className="text-xs text-slate-500">Check-out</p><strong>{shift.checkOut || "Working now"}</strong></div>
-            <div><p className="text-xs text-slate-500">Shift total</p><strong>{formatDuration(durationSeconds(shift, now))}</strong></div>
+            <div><p className="text-xs text-slate-500">Applied schedule</p><strong>{shift.shiftName || "No assigned shift"}</strong><p className="text-xs text-slate-500">{scheduledTime(shift) || "No scheduled time stored"}</p></div>
+            <div><p className="text-xs text-slate-500">Shift total</p><strong>{formatDuration(durationSeconds(shift, now))}</strong>{(shift.breakMinutes > 0 || shift.overtimeMinutes > 0) && <p className="text-xs text-slate-500">{shift.breakMinutes} min break · {shift.overtimeMinutes} min overtime</p>}</div>
             <Status value={shift.status} />
           </div>)}
         </div>
       </article>)}
     </div>
+  </>;
+}
+
+export default function EmployeeAttendance() {
+  const [tab, setTab] = useState("today");
+  return <>
+    <div className="mb-7">
+      <h1 className="text-3xl font-extrabold sm:text-4xl">Attendance</h1>
+      <p className="mt-2 text-slate-500">Work time, breaks, leave, and corrections in one place.</p>
+    </div>
+    <div className="mb-6 flex gap-2 overflow-x-auto pb-1">
+      <button onClick={() => setTab("today")} className={tab === "today" ? "btn-primary shrink-0 rounded-full" : "btn-secondary shrink-0 rounded-full"}><Clock3 className="h-4 w-4" />Today & history</button>
+      <button onClick={() => setTab("requests")} className={tab === "requests" ? "btn-primary shrink-0 rounded-full" : "btn-secondary shrink-0 rounded-full"}><CalendarRange className="h-4 w-4" />Leave & corrections</button>
+    </div>
+    {tab === "today" ? <AttendanceToday /> : <EmployeeAttendanceRequests />}
   </>;
 }

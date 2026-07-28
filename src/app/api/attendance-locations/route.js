@@ -52,13 +52,49 @@ function radius(value) {
 
 export async function GET(request) {
   try {
-    const { client, access } = await requireAnyPermission(request, ["attendance.view_self", "attendance.view_team", "attendance.view_all", "settings.manage"]);
+    const { client, access, profile } = await requireAnyPermission(request, ["attendance.view_self", "attendance.view_team", "attendance.view_all", "settings.manage"]);
     let query = client.from("attendance_locations").select(locationSelect).order("name");
     if (!access.permissions.includes("settings.manage") && !access.isOwner) query = query.eq("active", true);
     const { data, error } = await query;
     if (error) throw error;
+
+    let visible = data;
+    if (!access.isOwner
+      && !access.permissions.includes("settings.manage")
+      && access.permissions.includes("attendance.view_self")
+      && !access.permissions.includes("attendance.view_team")
+      && !access.permissions.includes("attendance.view_all")) {
+      const assignmentsResult = await client.from("attendance_geofence_assignments")
+        .select("location_id,target_type,team_id,employee_id,project_id,event_type,valid_from,valid_until,active");
+      if (!assignmentsResult.error) {
+        const [membershipsResult, workResult] = await Promise.all([
+          client.from("team_members").select("team_id").eq("user_id", profile.id),
+          client.from("work_assignments").select("module_id").eq("employee_id", profile.id)
+        ]);
+        const moduleIds = (workResult.data || []).map(item => item.module_id);
+        const modulesResult = moduleIds.length
+          ? await client.from("project_modules").select("id,project_id").in("id", moduleIds)
+          : { data: [] };
+        const teamIds = new Set((membershipsResult.data || []).map(item => item.team_id));
+        const projectIds = new Set((modulesResult.data || []).map(item => item.project_id));
+        const today = new Date().toISOString().slice(0, 10);
+        const locationIds = new Set((assignmentsResult.data || []).filter(assignment =>
+          assignment.active
+          && (!assignment.valid_from || assignment.valid_from <= today)
+          && (!assignment.valid_until || assignment.valid_until >= today)
+          && (
+            assignment.target_type === "all"
+            || (assignment.target_type === "employee" && assignment.employee_id === profile.id)
+            || (assignment.target_type === "team" && teamIds.has(assignment.team_id))
+            || (assignment.target_type === "project" && projectIds.has(assignment.project_id))
+          )
+        ).map(assignment => assignment.location_id));
+        visible = data.filter(location => locationIds.has(location.id));
+      }
+    }
+
     return Response.json(
-      { data: data.map(mapLocation) },
+      { data: visible.map(mapLocation) },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {

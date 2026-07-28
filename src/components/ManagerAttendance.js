@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Clock3, Download, TimerReset, UsersRound } from "lucide-react";
+import { CalendarRange, CheckCircle2, ClipboardCheck, Clock3, Download, MapPinned, TimerReset, UsersRound, WalletCards } from "lucide-react";
 import { durationSeconds, formatDuration } from "@/lib/time";
 import { apiJson } from "@/lib/apiClient";
+import AttendanceManagementPanel from "@/components/AttendanceManagementPanel";
+import { useAccess } from "@/components/AccessContext";
+import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 
 function Metric({ label, value, icon: Icon, tone }) {
   return <div className="card p-6"><div className="flex items-start justify-between"><div><p className="text-xs font-semibold uppercase tracking-widest text-slate-500">{label}</p><p className="mt-3 text-3xl font-extrabold">{value}</p></div><span className={`grid h-12 w-12 place-items-center rounded-full ${tone}`}><Icon /></span></div></div>;
@@ -26,7 +29,7 @@ function GeofenceResult({ location, label }) {
   </div>;
 }
 
-export default function ManagerAttendance() {
+function AttendanceOverview() {
   const [items, setItems] = useState([]);
   const [now, setNow] = useState(Date.now());
   const [message, setMessage] = useState("");
@@ -65,6 +68,7 @@ export default function ManagerAttendance() {
   }, [items, now]);
 
   const active = items.filter(item => !item.checkOutAt && !item.checkOut);
+  const overdue = active.filter(item => item.missedCheckout);
   const completed = items.filter(item => item.checkOutAt || item.checkOut);
   const totalSeconds = completed.reduce((sum, item) => sum + durationSeconds(item), 0);
 
@@ -83,15 +87,12 @@ export default function ManagerAttendance() {
   }
 
   return <>
-    <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <h1 className="text-3xl font-extrabold sm:text-4xl">Attendance overview</h1>
-        <p className="mt-2 text-slate-500">Exact daily work time and saved geofence verification details.</p>
-      </div>
+    <div className="mb-5 flex justify-end">
       <button onClick={download} className="btn-secondary"><Download className="h-4 w-4" />Export daily totals</button>
     </div>
 
     {message && <p className="mb-5 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{message}</p>}
+    {overdue.length > 0 && <p className="mb-5 rounded-xl bg-amber-50 p-4 text-sm font-semibold text-amber-700">{overdue.length} employee{overdue.length === 1 ? "" : "s"} missed the scheduled checkout reminder: {overdue.map(item => item.employee).join(", ")}.</p>}
 
     <div className="grid gap-5 sm:grid-cols-3">
       <Metric label="Currently on duty" value={active.length} icon={UsersRound} tone="bg-emerald-50 text-emerald-600" />
@@ -123,8 +124,31 @@ export default function ManagerAttendance() {
       <div className="border-b px-5 py-4"><h2 className="font-bold">Individual shift records</h2><p className="text-sm text-slate-500">GPS links and server-calculated geofence distances are retained for each event.</p></div>
       <table className="min-w-full text-left">
         <thead className="bg-slate-50 text-xs uppercase tracking-widest text-slate-500"><tr><th className="px-5 py-4">Employee</th><th>Date</th><th>Check-in</th><th>Check-out</th><th>Shift time</th><th>Check-in GPS</th><th>Check-out GPS</th></tr></thead>
-        <tbody>{items.map(row => <tr key={row.id} className="border-t align-top"><td className="px-5 py-4 font-bold">{row.employee}</td><td className="py-4">{row.date}</td><td className="py-4">{row.checkIn}</td><td className="py-4">{row.checkOut || "Working now"}</td><td className="py-4 font-bold">{formatDuration(durationSeconds(row, now))}</td><td className="py-4 pr-4"><GeofenceResult location={row.checkInLocation} label="Check-in" /></td><td className="py-4 pr-4"><GeofenceResult location={row.checkOutLocation} label="Check-out" /></td></tr>)}</tbody>
+        <tbody>{items.map(row => <tr key={row.id} className="border-t align-top"><td className="px-5 py-4 font-bold">{row.employee}</td><td className="py-4">{row.date}</td><td className="py-4">{row.checkIn}</td><td className="py-4">{row.checkOut || "Working now"}</td><td className="py-4"><strong>{formatDuration(durationSeconds(row, now))}</strong>{(row.breakMinutes > 0 || row.overtimeMinutes > 0) && <p className="text-xs text-slate-500">{row.breakMinutes} min break · {row.overtimeMinutes} min overtime</p>}</td><td className="py-4 pr-4"><GeofenceResult location={row.checkInLocation} label="Check-in" /></td><td className="py-4 pr-4"><GeofenceResult location={row.checkOutLocation} label="Check-out" /></td></tr>)}</tbody>
       </table>
     </section>
+  </>;
+}
+
+export default function ManagerAttendance() {
+  const access = useAccess();
+  const canApprove = hasPermission(access, PERMISSIONS.attendanceApprove);
+  const canConfigure = hasPermission(access, PERMISSIONS.settingsManage);
+  const tabs = [
+    ["overview", "Overview", Clock3],
+    ...(canApprove ? [["planning", "Planning", CalendarRange], ["requests", "Requests", ClipboardCheck]] : []),
+    ...(canConfigure ? [["geofences", "Geofences", MapPinned]] : []),
+    ...(canApprove ? [["payroll", "Payroll", WalletCards]] : [])
+  ];
+  const [tab, setTab] = useState("overview");
+  return <>
+    <div className="mb-7">
+      <h1 className="text-3xl font-extrabold sm:text-4xl">Attendance</h1>
+      <p className="mt-2 text-slate-500">Daily records, workforce planning, requests, geofences, and payroll summaries.</p>
+    </div>
+    <div className="mb-6 flex gap-2 overflow-x-auto pb-1">
+      {tabs.map(([key, label, Icon]) => <button key={key} onClick={() => setTab(key)} className={tab === key ? "btn-primary shrink-0 rounded-full" : "btn-secondary shrink-0 rounded-full"}><Icon className="h-4 w-4" />{label}</button>)}
+    </div>
+    {tab === "overview" ? <AttendanceOverview /> : <AttendanceManagementPanel view={tab} />}
   </>;
 }

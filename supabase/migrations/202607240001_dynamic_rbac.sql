@@ -529,6 +529,13 @@ begin
   affected_role := case when tg_op = 'DELETE' then old.role_id else new.role_id end;
   affected_permission := case when tg_op = 'DELETE' then old.permission_id else new.permission_id end;
 
+  -- Allow trusted migration/administration sessions in Supabase SQL Editor to
+  -- rerun permission seed statements. API requests use the authenticator role
+  -- with a non-null auth.uid() and do not enter this branch.
+  if auth.uid() is null and session_user in ('postgres', 'supabase_admin') then
+    return case when tg_op = 'DELETE' then old else new end;
+  end if;
+
   if public.is_owner(auth.uid()) then
     return case when tg_op = 'DELETE' then old else new end;
   end if;
@@ -570,6 +577,13 @@ declare
 begin
   target_user := case when tg_op = 'DELETE' then old.user_id else new.user_id end;
   target_role := case when tg_op = 'DELETE' then old.role_id else new.role_id end;
+
+  -- Supabase SQL Editor runs migrations as a trusted database role without an
+  -- authenticated application user. Keep rerunnable seed/upsert statements
+  -- separate from normal API requests, which never satisfy this condition.
+  if auth.uid() is null and session_user in ('postgres', 'supabase_admin') then
+    return case when tg_op = 'DELETE' then old else new end;
+  end if;
 
   -- The profile insert trigger seeds a safe default role with no actor. Direct
   -- client inserts still fail the user_roles RLS assigned_by check.

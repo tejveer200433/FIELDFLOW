@@ -11,7 +11,7 @@ const emptyForm = {
   radiusM: "200"
 };
 
-export default function AttendanceLocations() {
+export default function AttendanceLocations({ embedded = false }) {
   const [locations, setLocations] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState("");
@@ -94,10 +94,10 @@ export default function AttendanceLocations() {
   }
 
   return <>
-    <div className="mb-7">
+    {!embedded && <div className="mb-7">
       <h1 className="text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">Attendance locations</h1>
       <p className="mt-2 text-slate-500">Configure the office and site boundaries employees may use for attendance.</p>
-    </div>
+    </div>}
 
     <div className="grid gap-6 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
       <form onSubmit={save} className="card h-fit p-5 sm:p-6">
