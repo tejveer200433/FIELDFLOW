@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { BarChart3, Bell, BriefcaseBusiness, ChevronLeft, CircleHelp, ClipboardList, Clock3, LogOut, Map, Menu, ReceiptText, Search, Settings, Users, X, Zap } from "lucide-react";
+import { Activity, BarChart3, Bell, BriefcaseBusiness, ChevronLeft, CircleHelp, ClipboardList, Clock3, LogOut, Map, Menu, ReceiptText, Search, Settings, ShieldCheck, Users, X, Zap } from "lucide-react";
 import { signOutUser, useAuthGuard } from "@/lib/authClient";
 import { AccessProvider } from "@/components/AccessContext";
 import { hasAnyPermission, PERMISSIONS } from "@/lib/permissions";
@@ -21,11 +21,16 @@ const managementNav = [
 ];
 
 const nav = {
-  manager: managementNav,
+  manager: [
+    ...managementNav,
+    ["activity", "Team Activity", Activity, ["activity.view_team", "activity.view_all"]]
+  ],
   admin: [
     ...managementNav,
     ["attendance-locations", "Attendance locations", Map, [PERMISSIONS.settingsManage]],
-    ["settings", "Roles & permissions", Settings, [PERMISSIONS.rolesManage, PERMISSIONS.teamsManage]]
+    ["settings", "Roles & permissions", Settings, [PERMISSIONS.rolesManage, PERMISSIONS.teamsManage]],
+    ["activity", "Workforce Activity", Activity, ["activity.view_all"]],
+    ["monitoring-settings", "Monitoring Settings", ShieldCheck, ["activity.policies.manage"]]
   ]
 };
 

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { Bell, ClipboardList, Grid2X2, LogOut, ReceiptText, UserRound, WalletCards } from "lucide-react";
+import { Activity, Bell, ClipboardList, Grid2X2, LogOut, ReceiptText, UserRound, WalletCards } from "lucide-react";
 import { EmployeeTrackingProvider } from "@/components/EmployeeTrackingContext";
 import { AccessProvider } from "@/components/AccessContext";
 import { signOutUser, useAuthGuard } from "@/lib/authClient";
@@ -15,7 +15,8 @@ const nav = [
   ["attendance", "Attendance", Bell, [PERMISSIONS.attendanceViewSelf]],
   ["reports", "Reports", ReceiptText, [PERMISSIONS.reportsSubmit]],
   ["expenses", "Expenses", WalletCards, [PERMISSIONS.expensesSubmit]],
-  ["profile", "Me", UserRound, []]
+  ["profile", "Me", UserRound, []],
+  ["activity", "My Activity", Activity, ["activity.view_self"]]
 ];
 
 export default function EmployeeShell({ children }) {
