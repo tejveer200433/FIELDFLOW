@@ -1,5 +1,12 @@
 import { requireActivitySession, ACTIVITY_PERMISSIONS } from "@/lib/activity/auth";
-import { getAcknowledgement, getActivePolicy, requireOwnedDevice, requireOwnedSession, writeActivityAudit } from "@/lib/activity/data";
+import {
+  getAcknowledgement,
+  getActivePolicy,
+  requireOwnedDevice,
+  requireOwnedSession,
+  throwActivityDatabaseError,
+  writeActivityAudit
+} from "@/lib/activity/data";
 import { enforceActivityRateLimit } from "@/lib/activity/rateLimit";
 import { ActivityError, activityFailure, activitySuccess, readActivityJson } from "@/lib/activity/responses";
 import { parseSampleBatch } from "@/lib/activity/validation.mjs";
@@ -67,6 +74,14 @@ export async function POST(request) {
       });
       if (error) throwActivityDatabaseError(error);
       ingestion = data || ingestion;
+    }
+    if (valid.length) {
+      const summaryDates = valid.map(sample => sample.capturedAt.slice(0, 10)).sort();
+      const { error } = await session.client.rpc("activity_refresh_daily_summaries", {
+        p_start_date: summaryDates[0],
+        p_end_date: summaryDates.at(-1)
+      });
+      if (error) throwActivityDatabaseError(error);
     }
     const combinedRejected = [...rejected, ...(ingestion.rejected || [])];
     return activitySuccess({

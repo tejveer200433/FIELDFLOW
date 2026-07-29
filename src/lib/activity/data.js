@@ -133,6 +133,19 @@ export function rpcRow(data) {
 
 export function throwActivityDatabaseError(error) {
   const message = String(error?.message || "");
+  if (
+    error?.code === "PGRST202"
+    || (
+      /activity_(ingest_samples|refresh_daily_summaries)/i.test(message)
+      && /(schema cache|could not find|does not exist)/i.test(message)
+    )
+  ) {
+    throw new ActivityError(
+      "DATABASE_MIGRATION_REQUIRED",
+      "The activity database migrations are not fully applied.",
+      503
+    );
+  }
   const mappings = [
     ["Device registration unavailable", "DEVICE_UNAVAILABLE", 409],
     ["Device reactivation requires", "DEVICE_REACTIVATION_DENIED", 403],

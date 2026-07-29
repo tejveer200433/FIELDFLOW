@@ -7,8 +7,12 @@ Apply these immutable files in timestamp order:
 1. `202607280001_employee_activity_tracking.sql`
 2. `202607280002_activity_api_functions.sql`
 3. `202607290001_activity_security_hardening.sql`
+4. `202607290002_activity_daily_summary_aggregation.sql`
+5. `202607290003_activity_ingestion_conflict_fix.sql`
 
 The first migration creates the eight tables, permissions, bootstrap policy, indexes, grants, and RLS. The second creates transactional activity functions. The third removes direct authenticated write grants and adds bounded API ingestion plus recursive audit-metadata protection.
+The fourth adds bounded, authenticated UTC-day summary recomputation invoked after successful sample ingestion.
+The fifth preserves idempotent ingestion while avoiding a PL/pgSQL variable/column ambiguity in the conflict target.
 
 Never edit a migration after it has been applied. Create a later migration so repository history and the Supabase migration ledger remain reproducible.
 

@@ -7,6 +7,8 @@ const root = process.cwd();
 const phaseOne = readFileSync(join(root, "supabase/migrations/202607280001_employee_activity_tracking.sql"), "utf8");
 const phaseTwo = readFileSync(join(root, "supabase/migrations/202607280002_activity_api_functions.sql"), "utf8");
 const hardening = readFileSync(join(root, "supabase/migrations/202607290001_activity_security_hardening.sql"), "utf8");
+const summaries = readFileSync(join(root, "supabase/migrations/202607290002_activity_daily_summary_aggregation.sql"), "utf8");
+const ingestionFix = readFileSync(join(root, "supabase/migrations/202607290003_activity_ingestion_conflict_fix.sql"), "utf8");
 const routePaths = [
   "devices/route.js",
   "devices/register/route.js",
@@ -73,13 +75,35 @@ test("session, heartbeat and policy mutations use database time and transactiona
 
 test("ingestion is bounded and idempotent", () => {
   const route = readFileSync(join(root, "src/app/api/activity/ingest/route.js"), "utf8");
+  assert.match(route, /throwActivityDatabaseError/);
   assert.match(route, /rpc\("activity_ingest_samples"/);
+  assert.match(route, /rpc\("activity_refresh_daily_summaries"/);
   assert.match(route, /offline_sync_limit_seconds/);
   assert.match(route, /acceptedCount/);
   assert.match(route, /duplicateCount/);
   assert.match(route, /rejectedCount/);
   assert.match(hardening, /jsonb_array_length\(p_samples\) not between 1 and 100/);
   assert.match(hardening, /on conflict \(device_id, local_sample_id\) do nothing/);
+});
+
+test("daily summaries are recomputed from bounded authenticated activity data", () => {
+  assert.match(summaries, /function public\.activity_refresh_daily_summaries\(/);
+  assert.match(summaries, /employee uuid := auth\.uid\(\)/);
+  assert.match(summaries, /p_end_date - p_start_date > 31/);
+  assert.match(summaries, /public\.tracking_sessions/);
+  assert.match(summaries, /public\.activity_samples/);
+  assert.match(summaries, /policy\.idle_threshold_seconds/);
+  assert.match(summaries, /on conflict \(employee_id, summary_date\) do update/);
+  assert.match(summaries, /grant execute on function public\.activity_refresh_daily_summaries\(date,date\) to authenticated/);
+});
+
+test("ingestion conflict handling avoids PL/pgSQL variable ambiguity", () => {
+  assert.match(ingestionFix, /create or replace function public\.activity_ingest_samples\(/);
+  assert.match(
+    ingestionFix,
+    /on conflict on constraint activity_samples_device_id_local_sample_id_key do nothing/
+  );
+  assert.doesNotMatch(ingestionFix, /on conflict \(device_id, local_sample_id\)/);
 });
 
 test("direct authenticated activity writes are revoked after API hardening", () => {
