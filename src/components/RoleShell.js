@@ -74,7 +74,7 @@ export default function RoleShell({ role, children }) {
       {!collapsed && <div className="min-w-0"><p className="text-lg font-extrabold leading-none">FieldFlow</p><p className="mt-1 truncate text-xs font-bold uppercase tracking-widest text-blue-200">{dynamicRoleName}</p></div>}
       <button aria-label="Close menu" className="ml-auto lg:hidden" onClick={() => setMobileOpen(false)}><X /></button>
     </div>
-    <nav className="mt-10 space-y-2">
+    <nav className="mt-10 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
       {visibleNav.map(([slug, label, Icon]) => {
         const href = `/${role}${slug ? `/${slug}` : ""}`;
         const active = pathname === href;
