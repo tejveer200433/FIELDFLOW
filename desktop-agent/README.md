@@ -81,7 +81,7 @@ Logs contain only allow-listed lifecycle event names, timestamps, and levels. Th
 
 ## Offline and recovery
 
-The agent queues at most 10,000 non-uploaded samples. Uploading rows return to pending after restart. Transient failures use exponential backoff; HTTP 429 honors `Retry-After`. Permanently rejected samples remain local for diagnosis without infinite retry. Uploaded confirmations are retained for approximately 24 hours and pruned during successful sync.
+The agent queues at most 10,000 non-uploaded samples. Queue reads are restricted to each sample's original tracking session, so a later session cannot claim earlier offline samples. Uploading rows return to pending after restart. Transient failures use exponential backoff; HTTP 429 honors `Retry-After`. Permanently rejected samples remain local for diagnosis without infinite retry. Uploaded confirmations are retained for approximately 24 hours and pruned during successful sync.
 
 ## Troubleshooting
 
@@ -102,6 +102,7 @@ The NSIS uninstaller removes application binaries. Treat the Tauri application-d
 
 - Windows only; no browser extension or mobile agent.
 - Keyboard and mouse counts are zero under the no-hook safety decision.
+- Samples belonging to an already-ended session remain preserved locally until the FIELD-FLOW API supports bounded ended-session ingestion.
 - Sleep/resume relies on webview visibility/network events and needs device acceptance testing.
 - SQLite corruption has no automated repair UI.
 - Last-sync UI state is not persisted across restart.

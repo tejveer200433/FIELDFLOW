@@ -42,6 +42,7 @@ export function createActivityApi({ baseUrl, supabase, fetchImpl = fetch }) {
 
   return {
     getPolicy: () => request("/api/activity/policies"),
+    getDevices: () => request("/api/activity/devices?limit=100"),
     acknowledgePolicy: body => request("/api/activity/policies/acknowledge", {
       method: "POST", body: JSON.stringify(body)
     }),

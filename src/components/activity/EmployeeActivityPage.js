@@ -12,6 +12,7 @@ import ActivitySummaryCards from "@/components/activity/ActivitySummaryCards";
 import ActivityTimeline from "@/components/activity/ActivityTimeline";
 import ApplicationUsageSummary from "@/components/activity/ApplicationUsageSummary";
 import CurrentTrackingSession from "@/components/activity/CurrentTrackingSession";
+import InputActivitySummary from "@/components/activity/InputActivitySummary";
 import MonitoringAcknowledgement from "@/components/activity/MonitoringAcknowledgement";
 import MonitoringPolicyCard from "@/components/activity/MonitoringPolicyCard";
 import { hasPermission } from "@/lib/permissions";
@@ -171,6 +172,7 @@ export default function EmployeeActivityPage() {
     <ActivityStatusCard status={monitoringStatus} description={statusDescriptions[monitoringStatus.key]} />
     <CurrentTrackingSession sessionInfo={sessionInfo} devices={devices} policy={policy} busy={busy === "start" || busy === "stop"} onStart={start} onStop={stop} />
     <ActivitySummaryCards summary={todaySummary} />
+    <InputActivitySummary activity={activity?.todayInputActivity} />
     <div className="grid gap-6 xl:grid-cols-2">
       <MonitoringPolicyCard policy={policy} />
       <MonitoringAcknowledgement policy={policy} busy={busy === "acknowledge"} onAcknowledge={acknowledge} />

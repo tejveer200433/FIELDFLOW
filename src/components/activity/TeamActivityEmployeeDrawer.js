@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import ApplicationUsageSummary from "@/components/activity/ApplicationUsageSummary";
+import InputActivitySummary from "@/components/activity/InputActivitySummary";
 import TeamActivityErrorState from "@/components/activity/TeamActivityErrorState";
 import TeamActivityLoadingState from "@/components/activity/TeamActivityLoadingState";
 import TeamActivityStatusBadge from "@/components/activity/TeamActivityStatusBadge";
@@ -54,6 +55,7 @@ export default function TeamActivityEmployeeDrawer({ employee, policy, onClose }
           </dl></section>
           <section className="card p-5"><h3 className="font-bold">Device and heartbeat</h3>{device ? <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">Device</dt><dd className="mt-1 font-semibold">{device.deviceName}</dd></div><div><dt className="text-slate-500">Platform</dt><dd className="mt-1 font-semibold">{device.platform}{device.operatingSystemVersion ? ` · ${device.operatingSystemVersion}` : ""}</dd></div><div><dt className="text-slate-500">Agent version</dt><dd className="mt-1 font-semibold">{details.recentHeartbeat?.agentVersion || device.agentVersion || "Not reported"}</dd></div><div><dt className="text-slate-500">Last heartbeat</dt><dd className="mt-1 font-semibold">{formatDateTime(details.recentHeartbeat?.recordedAt)}</dd></div></dl> : <p className="mt-3 text-sm text-slate-500">No registered devices are visible in your authorised scope.</p>}</section>
           <section className="card p-5"><h3 className="font-bold">Daily summary</h3><dl className="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-5"><div><dt className="text-slate-500">Tracked</dt><dd className="mt-1 font-semibold">{formatDuration(latestSummary?.trackedSeconds)}</dd></div><div><dt className="text-slate-500">Active</dt><dd className="mt-1 font-semibold">{formatDuration(latestSummary?.activeSeconds)}</dd></div><div><dt className="text-slate-500">Idle</dt><dd className="mt-1 font-semibold">{formatDuration(latestSummary?.idleSeconds)}</dd></div><div><dt className="text-slate-500">Offline</dt><dd className="mt-1 font-semibold">{formatDuration(latestSummary?.offlineSeconds)}</dd></div><div><dt className="text-slate-500">Activity level</dt><dd className="mt-1 font-semibold">{formatPercentage(latestSummary?.activityPercentage)}</dd></div></dl></section>
+          <InputActivitySummary activity={details.todayInputActivity} />
           <section className="card p-5"><div className="mb-4"><h3 className="font-bold">Grouped timeline</h3><p className="text-sm text-slate-500">Session-level records for the selected range.</p></div><TeamActivityTimeline sessions={details.timeline} /></section>
           <ApplicationUsageSummary enabled={Boolean(policy?.collectApplicationNames)} usage={details.applicationUsage || []} sampleIntervalSeconds={policy?.sampleIntervalSeconds} trackedSeconds={latestSummary?.trackedSeconds || 0} />
         </>}

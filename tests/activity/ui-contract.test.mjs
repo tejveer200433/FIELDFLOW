@@ -55,6 +55,17 @@ test("sensitive device data and raw activity values are never rendered", () => {
   assert.match(privacy, /Screenshots/);
 });
 
+test("aggregate keyboard and mouse counts are returned and shown without event details", () => {
+  const inputSummary = read("src/components/activity/InputActivitySummary.js");
+  const employeeRoute = read("src/app/api/activity/employees/[employeeId]/route.js");
+  assert.match(employeeRoute, /keyboard_event_count,mouse_event_count/);
+  assert.match(employeeRoute, /todayInputActivity/);
+  assert.match(inputSummary, /Keyboard events/);
+  assert.match(inputSummary, /Mouse events/);
+  assert.match(inputSummary, /typed keys and mouse coordinates are never collected/);
+  assert.doesNotMatch(inputSummary, /keyCode|scanCode|coordinates:|clickTarget|typedText/);
+});
+
 test("polling is visibility-aware, overlap-safe, and cleaned up", () => {
   assert.match(page, /requestInFlight\.current/);
   assert.match(page, /document\.visibilityState === "visible"/);

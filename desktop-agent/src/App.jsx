@@ -129,21 +129,14 @@ export default function App() {
 
   const register = useCallback(async () => {
     const system = await invoke("get_device_identity");
-    const [existingDeviceId, registeredAt] = await Promise.all([
-      invoke("get_agent_state", { key: "device_id" }),
-      invoke("get_agent_state", { key: "device_registered_at" })
-    ]);
+    const existingDeviceId = await invoke("get_agent_state", { key: "device_id" });
     if (existingDeviceId) {
-      const existing = {
-        deviceId: existingDeviceId,
-        deviceName: system.deviceName,
-        operatingSystemVersion: system.operatingSystemVersion,
-        agentVersion: AGENT_VERSION,
-        status: "active",
-        registeredAt
-      };
-      setDevice(existing);
-      return existing;
+      const result = await api.getDevices();
+      const existing = result.devices?.find(item => item.deviceId === existingDeviceId);
+      if (existing) {
+        setDevice(existing);
+        return existing;
+      }
     }
     const result = await api.registerDevice({
       deviceName: system.deviceName,
@@ -188,13 +181,14 @@ export default function App() {
       const registeredDevice = await register();
       await invoke("recover_uploading_samples");
       await refreshQueue();
-      await api.heartbeat({
+      const heartbeat = await api.heartbeat({
         deviceId: registeredDevice.deviceId,
         trackingSessionId: resumable ? currentSession.session.sessionId : null,
         agentVersion: AGENT_VERSION,
         onlineStatus: "online",
         batteryLevel: null
       });
+      setDevice(current => current ? { ...current, status: heartbeat.deviceStatus } : current);
       setLastHeartbeat(new Date());
       await agentLog("login_succeeded");
     } catch (initializationError) {
@@ -228,7 +222,10 @@ export default function App() {
         agentVersion: AGENT_VERSION,
         onlineStatus: "online",
         batteryLevel: null
-      }).then(() => setLastHeartbeat(new Date()))
+      }).then(result => {
+        setDevice(current => current ? { ...current, status: result.deviceStatus } : current);
+        setLastHeartbeat(new Date());
+      })
         .catch(heartbeatError => setError(`Heartbeat delayed: ${heartbeatError.message}`));
     };
     const onlineHandler = () => {
@@ -299,7 +296,10 @@ export default function App() {
           idleThresholdSeconds: policy.idleThresholdSeconds
         }) === "Idle" ? "idle" : online ? "online" : "offline",
         batteryLevel: null
-      }).then(() => setLastHeartbeat(new Date()))
+      }).then(result => {
+        setDevice(current => current ? { ...current, status: result.deviceStatus } : current);
+        setLastHeartbeat(new Date());
+      })
         .catch(heartbeatError => setError(`Heartbeat delayed: ${heartbeatError.message}`));
     }, Math.max(15, policy.heartbeatIntervalSeconds || 60) * 1000));
     if (session && policy.trackingEnabled) {

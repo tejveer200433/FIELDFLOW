@@ -31,6 +31,11 @@ impl Database {
              );
              CREATE INDEX IF NOT EXISTS pending_samples_sync_idx
                ON pending_samples (sync_state, next_attempt_at, captured_at);
+             CREATE INDEX IF NOT EXISTS pending_samples_session_sync_idx
+               ON pending_samples (
+                 tracking_session_id, sync_state, permanent_failure,
+                 next_attempt_at, captured_at
+               );
              CREATE TABLE IF NOT EXISTS agent_state (
                key TEXT PRIMARY KEY,
                value TEXT NOT NULL,
@@ -85,30 +90,42 @@ pub fn enqueue(database: &Database, sample: &NewSample) -> Result<(), String> {
     Ok(())
 }
 
-pub fn pending(database: &Database, limit: u32) -> Result<Vec<PendingSample>, String> {
+pub fn pending(
+    database: &Database,
+    tracking_session_id: &str,
+    limit: u32,
+) -> Result<Vec<PendingSample>, String> {
     let connection = database
         .0
         .lock()
         .map_err(|_| "Database lock failed.".to_string())?;
-    let mut statement = connection.prepare(
-        "SELECT local_sample_id, captured_at, keyboard_event_count, mouse_event_count,
+    let mut statement = connection
+        .prepare(
+            "SELECT local_sample_id, captured_at, keyboard_event_count, mouse_event_count,
                 idle_seconds, active_application, screen_locked
          FROM pending_samples
-         WHERE sync_state IN ('pending', 'failed') AND permanent_failure = 0 AND next_attempt_at <= ?1
-         ORDER BY captured_at ASC LIMIT ?2"
-    ).map_err(|error| error.to_string())?;
+         WHERE tracking_session_id = ?1
+           AND sync_state IN ('pending', 'failed')
+           AND permanent_failure = 0
+           AND next_attempt_at <= ?2
+         ORDER BY captured_at ASC LIMIT ?3",
+        )
+        .map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map(params![Utc::now().to_rfc3339(), limit.min(100)], |row| {
-            Ok(PendingSample {
-                local_sample_id: row.get(0)?,
-                captured_at: row.get(1)?,
-                keyboard_event_count: row.get(2)?,
-                mouse_event_count: row.get(3)?,
-                idle_seconds: row.get(4)?,
-                active_application: row.get(5)?,
-                screen_locked: row.get(6)?,
-            })
-        })
+        .query_map(
+            params![tracking_session_id, Utc::now().to_rfc3339(), limit.min(100)],
+            |row| {
+                Ok(PendingSample {
+                    local_sample_id: row.get(0)?,
+                    captured_at: row.get(1)?,
+                    keyboard_event_count: row.get(2)?,
+                    mouse_event_count: row.get(3)?,
+                    idle_seconds: row.get(4)?,
+                    active_application: row.get(5)?,
+                    screen_locked: row.get(6)?,
+                })
+            },
+        )
         .map_err(|error| error.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())
@@ -324,7 +341,10 @@ mod tests {
         assert_eq!(count(&database).unwrap(), 1);
         mark_uploading(&database, &["sample-1".to_string()]).unwrap();
         recover(&database).unwrap();
-        assert_eq!(pending(&database, 100).unwrap().len(), 1);
+        assert_eq!(pending(&database, "session", 100).unwrap().len(), 1);
+        assert!(pending(&database, "different-session", 100)
+            .unwrap()
+            .is_empty());
         apply_result(
             &database,
             &SyncResult {

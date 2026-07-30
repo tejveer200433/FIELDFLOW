@@ -55,9 +55,10 @@ pub fn enqueue_sample(database: State<'_, Database>, sample: NewSample) -> Resul
 #[tauri::command]
 pub fn pending_samples(
     database: State<'_, Database>,
+    tracking_session_id: String,
     limit: u32,
 ) -> Result<Vec<PendingSample>, String> {
-    database::pending(&database, limit)
+    database::pending(&database, &tracking_session_id, limit)
 }
 
 #[tauri::command]

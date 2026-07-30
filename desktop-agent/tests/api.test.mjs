@@ -45,3 +45,21 @@ test("rate-limit response remains a safe retryable API error", async () => {
     return true;
   });
 });
+
+test("device status is loaded from the authenticated FIELD-FLOW device endpoint", async () => {
+  let requestedUrl;
+  const api = createActivityApi({
+    baseUrl: "http://localhost:3000",
+    supabase: supabaseWith({ access_token: "secret", expires_at: 4_000_000_000 }),
+    fetchImpl: async url => {
+      requestedUrl = url;
+      return new Response(JSON.stringify({
+        success: true,
+        data: { devices: [{ deviceId: "device-1", status: "pending" }] }
+      }), { status: 200 });
+    }
+  });
+  const result = await api.getDevices();
+  assert.equal(requestedUrl, "http://localhost:3000/api/activity/devices?limit=100");
+  assert.equal(result.devices[0].status, "pending");
+});

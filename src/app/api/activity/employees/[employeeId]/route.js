@@ -49,7 +49,7 @@ export async function GET(request, { params }) {
         .select("device_id,tracking_session_id,recorded_at,agent_version,online_status,battery_level")
         .eq("employee_id", employeeId).order("recorded_at", { ascending: false }).limit(50),
       session.client.from("activity_samples")
-        .select("tracking_session_id,captured_at,active_application,idle_seconds")
+        .select("tracking_session_id,captured_at,active_application,idle_seconds,keyboard_event_count,mouse_event_count")
         .eq("employee_id", employeeId).gte("captured_at", startTime).lte("captured_at", endTime)
         .order("captured_at", { ascending: false }).limit(5000),
       getActivePolicy(session.client, { required: false })
@@ -62,6 +62,20 @@ export async function GET(request, { params }) {
     const heartbeat = heartbeatsResult.data?.[0] || null;
     const currentSession = activeSessionResult.data || null;
     const applicationCounts = new Map();
+    const today = new Date().toISOString().slice(0, 10);
+    const todayInputActivity = {
+      keyboardEventCount: 0,
+      mouseEventCount: 0,
+      sampleCount: 0,
+      lastSampleAt: null
+    };
+    for (const sample of samplesResult.data || []) {
+      if (!sample.captured_at?.startsWith(today)) continue;
+      todayInputActivity.keyboardEventCount += Number(sample.keyboard_event_count) || 0;
+      todayInputActivity.mouseEventCount += Number(sample.mouse_event_count) || 0;
+      todayInputActivity.sampleCount += 1;
+      if (!todayInputActivity.lastSampleAt) todayInputActivity.lastSampleAt = sample.captured_at;
+    }
     if (policy?.collect_application_names) {
       for (const sample of samplesResult.data || []) {
         if (!sample.active_application) continue;
@@ -89,6 +103,7 @@ export async function GET(request, { params }) {
         activityPercentage: Number(row.activity_percentage)
       })),
       timeline: sessions.map(mapSession),
+      todayInputActivity,
       applicationUsage: Array.from(applicationCounts, ([application, value]) => ({ application, ...value }))
         .sort((a, b) => b.sampleCount - a.sampleCount).slice(0, 25),
       recentHeartbeat: heartbeat ? {
