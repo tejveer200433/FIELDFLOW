@@ -8,11 +8,13 @@ test("activity CORS middleware is restricted to the activity API namespace", () 
   assert.match(middleware, /matcher:\s*"\/api\/activity\/:path\*"/);
 });
 
-test("activity CORS middleware allows only the desktop-agent origins", () => {
+test("activity CORS middleware allows desktop origins and configured managed extensions only", () => {
   assert.match(middleware, /http:\/\/localhost:1420/);
   assert.match(middleware, /http:\/\/tauri\.localhost/);
   assert.match(middleware, /tauri:\/\/localhost/);
   assert.match(middleware, /activityAgentOrigins\.has\(origin\)/);
+  assert.match(middleware, /ACTIVITY_BROWSER_EXTENSION_IDS/);
+  assert.match(middleware, /activityExtensionOrigins\.has\(origin\)/);
   assert.doesNotMatch(middleware, /Access-Control-Allow-Origin",\s*"\*"/);
 });
 

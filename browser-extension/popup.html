@@ -1,0 +1,10 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+body{font:14px system-ui;width:300px;padding:16px;color:#0f172a}h1{font-size:17px}label{display:block;margin:10px 0 4px}input,button{box-sizing:border-box;width:100%;padding:9px}button{margin-top:12px;background:#2563eb;color:white;border:0;border-radius:7px;font-weight:700}.muted{color:#64748b;font-size:12px}.error{color:#b91c1c}
+</style></head><body>
+<h1>FieldFlow Website Activity</h1>
+<p class="muted">Records only active website hostnames during an active tracking session.</p>
+<div id="signed-out"><label>Email</label><input id="email" type="email"><label>Password</label><input id="password" type="password"><button id="sign-in">Sign in</button></div>
+<div id="signed-in" hidden><p>Signed in. Domain sampling runs once per minute while FieldFlow tracking is active.</p><button id="sign-out">Sign out</button></div>
+<p id="message" class="error"></p><script type="module" src="popup.js"></script>
+</body></html>

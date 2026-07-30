@@ -2,11 +2,11 @@ import { Shield } from "lucide-react";
 
 const collected = [
   "Work-session start and stop times", "Active and idle duration", "Keyboard activity counts",
-  "Mouse activity counts", "Active application name when enabled", "Device online status", "Agent version"
+  "Mouse activity counts", "Active application name when enabled", "Active website hostname through the managed extension", "Device online status", "Agent version"
 ];
 const notCollected = [
   "Actual typed characters", "Passwords", "Key names or key codes", "Clipboard contents",
-  "Mouse coordinates", "Personal message contents", "Screenshots", "Browser history",
+  "Mouse coordinates", "Personal message contents", "Screenshots", "Full browser URLs and page content",
   "Window titles", "Full file paths"
 ];
 

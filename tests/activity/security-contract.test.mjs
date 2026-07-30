@@ -9,6 +9,7 @@ const phaseTwo = readFileSync(join(root, "supabase/migrations/202607280002_activ
 const hardening = readFileSync(join(root, "supabase/migrations/202607290001_activity_security_hardening.sql"), "utf8");
 const summaries = readFileSync(join(root, "supabase/migrations/202607290002_activity_daily_summary_aggregation.sql"), "utf8");
 const ingestionFix = readFileSync(join(root, "supabase/migrations/202607290003_activity_ingestion_conflict_fix.sql"), "utf8");
+const websiteActivity = readFileSync(join(root, "supabase/migrations/202607300001_website_domain_activity.sql"), "utf8");
 const routePaths = [
   "devices/route.js",
   "devices/register/route.js",
@@ -17,6 +18,7 @@ const routePaths = [
   "sessions/stop/route.js",
   "sessions/current/route.js",
   "ingest/route.js",
+  "websites/ingest/route.js",
   "heartbeat/route.js",
   "team/route.js",
   "employees/route.js",
@@ -121,4 +123,12 @@ test("direct authenticated activity writes are revoked after API hardening", () 
   assert.match(hardening, /item\.device_id = device\.id/);
   assert.match(hardening, /policy\.offline_sync_limit_seconds/);
   assert.match(hardening, /activity_audit_metadata_has_no_sensitive_keys/);
+});
+
+test("website activity accepts hostnames only through an authenticated bounded RPC", () => {
+  assert.match(websiteActivity, /domain !~ '\[\/\?:#@\]'/);
+  assert.match(websiteActivity, /jsonb_array_length\(p_samples\) not between 1 and 100/);
+  assert.match(websiteActivity, /active_session[\s\S]*employee_id=auth\.uid\(\)/);
+  assert.match(websiteActivity, /on conflict\(employee_id,local_sample_id\) do nothing/);
+  assert.match(websiteActivity, /revoke insert, update, delete on public\.website_activity_samples from authenticated/);
 });

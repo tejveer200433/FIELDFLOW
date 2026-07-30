@@ -15,6 +15,7 @@ import CurrentTrackingSession from "@/components/activity/CurrentTrackingSession
 import InputActivitySummary from "@/components/activity/InputActivitySummary";
 import MonitoringAcknowledgement from "@/components/activity/MonitoringAcknowledgement";
 import MonitoringPolicyCard from "@/components/activity/MonitoringPolicyCard";
+import WebsiteUsageSummary from "@/components/activity/WebsiteUsageSummary";
 import { hasPermission } from "@/lib/permissions";
 import {
   acknowledgePolicy,
@@ -182,6 +183,7 @@ export default function EmployeeActivityPage() {
       <ActivityTimeline sessions={activity?.timeline || []} rangeDays={rangeDays} onRangeChange={setRangeDays} />
       <ApplicationUsageSummary enabled={Boolean(policy?.collectApplicationNames)} usage={activity?.applicationUsage || []} sampleIntervalSeconds={policy?.sampleIntervalSeconds} trackedSeconds={todaySummary?.trackedSeconds || 0} />
     </div>
+    <WebsiteUsageSummary usage={activity?.websiteUsage || []} />
     <section className="card p-5 text-sm text-slate-600">
       <h2 className="font-bold text-slate-900">Heartbeat and sync status</h2>
       {heartbeat

@@ -5,6 +5,13 @@ const activityAgentOrigins = new Set([
   "http://tauri.localhost",
   "tauri://localhost"
 ]);
+const activityExtensionOrigins = new Set(
+  (process.env.ACTIVITY_BROWSER_EXTENSION_IDS || "")
+    .split(",")
+    .map(id => id.trim())
+    .filter(Boolean)
+    .map(id => `chrome-extension://${id}`)
+);
 
 const activityCorsHeaders = {
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
@@ -23,7 +30,7 @@ function addActivityCorsHeaders(response, origin) {
 
 export function middleware(request) {
   const origin = request.headers.get("origin");
-  const allowedOrigin = origin && activityAgentOrigins.has(origin);
+  const allowedOrigin = origin && (activityAgentOrigins.has(origin) || activityExtensionOrigins.has(origin));
 
   if (request.method === "OPTIONS") {
     if (!allowedOrigin) {

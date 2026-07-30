@@ -66,6 +66,15 @@ test("aggregate keyboard and mouse counts are returned and shown without event d
   assert.doesNotMatch(inputSummary, /keyCode|scanCode|coordinates:|clickTarget|typedText/);
 });
 
+test("website usage renders hostnames without full URL or page content fields", () => {
+  const website = read("src/components/activity/WebsiteUsageSummary.js");
+  const route = read("src/app/api/activity/employees/[employeeId]/route.js");
+  assert.match(route, /website_activity_samples/);
+  assert.match(route, /websiteUsage/);
+  assert.match(website, /item\.domain/);
+  assert.doesNotMatch(website, /item\.(url|path|query|title|content)/);
+});
+
 test("polling is visibility-aware, overlap-safe, and cleaned up", () => {
   assert.match(page, /requestInFlight\.current/);
   assert.match(page, /document\.visibilityState === "visible"/);

@@ -75,7 +75,7 @@ export function visibleAcknowledgementText(policy) {
     `I acknowledge FieldFlow monitoring policy version ${policy.policyVersion}.`,
     `I understand that tracking occurs only during an active work session.`,
     `Collected records may include session times, active and idle duration, input activity counts, device status, agent version${policy.collectApplicationNames ? ", and active application names" : ""}.`,
-    `Typed characters, passwords, clipboard contents, screenshots, mouse coordinates, browser history, window titles, and full file paths are not collected.`,
+    `Typed characters, passwords, clipboard contents, screenshots, mouse coordinates, full browser URLs, page content, window titles, and full file paths are not collected. A managed extension may collect active website hostnames only.`,
     `Records are retained for ${policy.retentionDays} days.`
   ].join(" ");
 }

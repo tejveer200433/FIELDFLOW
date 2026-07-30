@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "FieldFlow Website Activity",
+  "version": "0.1.0",
+  "description": "Records active website hostnames during explicit FieldFlow tracking sessions.",
+  "incognito": "not_allowed",
+  "permissions": ["alarms", "storage", "tabs"],
+  "host_permissions": [
+    "https://fieldflow-henna.vercel.app/*",
+    "http://localhost:3000/*",
+    "https://*.supabase.co/*"
+  ],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_title": "FieldFlow Website Activity", "default_popup": "popup.html" }
+}

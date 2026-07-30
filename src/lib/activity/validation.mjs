@@ -152,6 +152,35 @@ export function parseSampleBatch(value) {
   };
 }
 
+export function parseWebsiteSampleBatch(value) {
+  const body = object(value, ["trackingSessionId", "samples"]);
+  if (!Array.isArray(body.samples) || body.samples.length < 1 || body.samples.length > 100) {
+    fail("samples must contain between 1 and 100 items.", "INVALID_BATCH_SIZE");
+  }
+  const seen = new Set();
+  const samples = body.samples.map((item, index) => {
+    const sample = object(item, [
+      "localSampleId", "capturedAt", "domain", "browserName", "durationSeconds"
+    ], `samples[${index}]`);
+    const localSampleId = string(sample.localSampleId, `samples[${index}].localSampleId`, { max: 120 });
+    if (!localIdPattern.test(localSampleId)) fail(`samples[${index}].localSampleId has an invalid format.`);
+    if (seen.has(localSampleId)) fail(`Duplicate localSampleId "${localSampleId}" in this batch.`, "DUPLICATE_BATCH_ID");
+    seen.add(localSampleId);
+    const domain = string(sample.domain, `samples[${index}].domain`, { max: 253 }).toLowerCase();
+    if (!/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(domain)) {
+      fail(`samples[${index}].domain must be a hostname only.`);
+    }
+    return {
+      localSampleId,
+      capturedAt: timestamp(sample.capturedAt, `samples[${index}].capturedAt`),
+      domain,
+      browserName: string(sample.browserName, `samples[${index}].browserName`, { max: 40 }).toLowerCase(),
+      durationSeconds: integer(sample.durationSeconds, `samples[${index}].durationSeconds`, 1, 300, 60)
+    };
+  });
+  return { trackingSessionId: uuid(body.trackingSessionId, "trackingSessionId"), samples };
+}
+
 export function parseHeartbeat(value) {
   const body = object(value, ["deviceId", "trackingSessionId", "agentVersion", "onlineStatus", "batteryLevel"]);
   return {
