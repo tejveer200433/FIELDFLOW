@@ -1,6 +1,6 @@
 # FieldFlow Website Activity extension
 
-This Manifest V3 extension supports Chrome, Edge, and Brave. It samples only the active tab hostname once per minute while the signed-in employee has an active FieldFlow tracking session.
+This Manifest V3 extension supports Chrome, Edge, and Brave. It records an active tab hostname when the employee changes websites and continues sampling the active hostname once per minute while the signed-in employee has an active FieldFlow tracking session.
 
 Before loading it:
 

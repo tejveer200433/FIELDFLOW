@@ -275,3 +275,37 @@ export async function PATCH(request) {
     return apiFailure(error);
   }
 }
+
+export async function DELETE(request) {
+  try {
+    const session = await requireAnyPermission(request, ["roles.manage"]);
+    const { client } = session;
+    if (!hasPermission(session.access, "roles.manage")) throw new ApiError("You do not have permission to manage roles.", 403);
+    const body = await request.json();
+    if (body.entity !== "role" || !body.id) throw new ApiError("Select a role to delete.");
+
+    const { data: role, error: roleError } = await client
+      .from("roles")
+      .select("id,name,is_system")
+      .eq("id", body.id)
+      .maybeSingle();
+    if (roleError) throw roleError;
+    if (!role) throw new ApiError("Role not found.", 404);
+    if (role.is_system) throw new ApiError("System roles cannot be deleted.", 409);
+
+    const { count, error: countError } = await client
+      .from("user_roles")
+      .select("user_id", { count: "exact", head: true })
+      .eq("role_id", role.id);
+    if (countError) throw countError;
+    if (count) {
+      throw new ApiError(`This role is assigned to ${count} user${count === 1 ? "" : "s"}. Reassign them before deleting it.`, 409);
+    }
+
+    const { error } = await client.from("roles").delete().eq("id", role.id);
+    if (error) throw error;
+    return Response.json({ message: `Role "${role.name}" was permanently deleted.` });
+  } catch (error) {
+    return apiFailure(error);
+  }
+}

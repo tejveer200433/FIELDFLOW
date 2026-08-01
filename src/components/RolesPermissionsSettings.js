@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, ClipboardList, Pencil, Plus, RefreshCw, ShieldCheck, UsersRound, X } from "lucide-react";
+import { AlertTriangle, Check, ClipboardList, Pencil, Plus, RefreshCw, ShieldCheck, Trash2, UsersRound, X } from "lucide-react";
 import { apiJson } from "@/lib/apiClient";
 import { useAccess } from "@/components/AccessContext";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
@@ -22,6 +22,20 @@ function Status({ active }) {
   return <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{active ? "Active" : "Inactive"}</span>;
 }
 
+function DeleteRoleConfirmation({ role, busy, onClose, onConfirm }) {
+  if (!role) return null;
+  return <Modal title="Delete role?" onClose={busy ? () => {} : onClose}>
+    <div className="flex gap-3 rounded-2xl bg-rose-50 p-4 text-rose-800">
+      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+      <div><p className="font-bold">This action is permanent.</p><p className="mt-1 text-sm">The custom role <strong>{role.name}</strong> and its permission setup will be deleted. A role assigned to users cannot be deleted until those users are reassigned.</p></div>
+    </div>
+    <div className="mt-6 flex justify-end gap-3">
+      <button disabled={busy} onClick={onClose} className="btn-secondary">Cancel</button>
+      <button disabled={busy} onClick={onConfirm} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 font-bold text-white hover:bg-rose-700 disabled:opacity-60"><Trash2 className="h-4 w-4" />{busy ? "Deleting…" : "Delete role"}</button>
+    </div>
+  </Modal>;
+}
+
 export default function RolesPermissionsSettings() {
   const access = useAccess();
   const isOwner = Boolean(access?.isOwner);
@@ -30,6 +44,7 @@ export default function RolesPermissionsSettings() {
   const [data, setData] = useState({ roles: [], permissions: [], users: [], teams: [], auditLog: [] });
   const [tab, setTab] = useState("roles");
   const [roleForm, setRoleForm] = useState(null);
+  const [deleteRole, setDeleteRole] = useState(null);
   const [teamForm, setTeamForm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -140,6 +155,23 @@ export default function RolesPermissionsSettings() {
       : { entity, userId, teamId: value || null }, "User access updated.");
   }
 
+  async function removeRole() {
+    if (!deleteRole) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const payload = await apiJson("/api/rbac", { method: "DELETE", body: JSON.stringify({ entity: "role", id: deleteRole.id }) });
+      setDeleteRole(null);
+      setMessage(payload.message);
+      await load();
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const tabs = [
     ["roles", "Roles & permissions", ShieldCheck],
     ["users", "User assignments", UsersRound],
@@ -164,7 +196,7 @@ export default function RolesPermissionsSettings() {
       <div className="mb-4 flex items-center justify-between"><div><h2 className="text-xl font-bold">Workspace roles</h2><p className="text-sm text-slate-500">These roles are loaded from the database.</p></div>{canManageRoles && <button onClick={() => openRole()} className="btn-primary"><Plus className="h-4 w-4" />Create role</button>}</div>
       <div className="grid gap-4 lg:grid-cols-2">
         {data.roles.map(role => <article key={role.id} className="card p-5 sm:p-6">
-          <div className="flex items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-bold">{role.name}</h3><Status active={role.isActive} />{role.isSystem && <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">System template</span>}</div><p className="mt-2 text-sm leading-6 text-slate-500">{role.description || "No description"}</p></div>{canManageRoles && !(role.isSystem && role.name.toLowerCase() === "owner") && <button onClick={() => openRole(role)} className="icon-button"><Pencil className="h-4 w-4" /></button>}</div>
+          <div className="flex items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-bold">{role.name}</h3><Status active={role.isActive} />{role.isSystem && <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">System template</span>}</div><p className="mt-2 text-sm leading-6 text-slate-500">{role.description || "No description"}</p></div>{canManageRoles && !(role.isSystem && role.name.toLowerCase() === "owner") && <div className="flex flex-wrap justify-end gap-1"><button aria-label={`Edit ${role.name}`} onClick={() => openRole(role)} className="icon-button"><Pencil className="h-4 w-4" /></button>{!role.isSystem && <button aria-label={`Delete ${role.name}`} onClick={() => setDeleteRole(role)} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-bold text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" />Delete</button>}</div>}</div>
           <div className="mt-5 grid grid-cols-2 gap-3"><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs uppercase tracking-wider text-slate-500">Permissions</p><strong className="mt-1 block text-xl">{role.permissionIds.length}</strong></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs uppercase tracking-wider text-slate-500">Users</p><strong className="mt-1 block text-xl">{role.userCount}</strong></div></div>
           <div className="mt-4 flex flex-wrap gap-1.5">{role.permissionKeys.slice(0, 8).map(key => <span key={key} className="rounded-lg bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">{key}</span>)}{role.permissionKeys.length > 8 && <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">+{role.permissionKeys.length - 8} more</span>}</div>
         </article>)}
@@ -203,5 +235,6 @@ export default function RolesPermissionsSettings() {
         <button disabled={busy} className="btn-primary mt-6 w-full py-3">{busy ? "Saving…" : "Save team"}</button>
       </form>
     </Modal>}
+    <DeleteRoleConfirmation role={deleteRole} busy={busy} onClose={() => setDeleteRole(null)} onConfirm={removeRole} />
   </>;
 }

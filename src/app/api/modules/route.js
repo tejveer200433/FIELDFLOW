@@ -25,3 +25,37 @@ export async function POST(request) {
     return apiFailure(error);
   }
 }
+
+export async function DELETE(request) {
+  try {
+    const { client } = await requirePermission(request, "projects.manage");
+    const body = await request.json();
+    if (!body.id) throw new ApiError("Module id is required.");
+
+    const { data: module, error: moduleError } = await client
+      .from("project_modules")
+      .select("id,title,work_assignments(work_submissions(submission_files(object_path)))")
+      .eq("id", body.id)
+      .maybeSingle();
+    if (moduleError) throw moduleError;
+    if (!module) throw new ApiError("Module not found.", 404);
+
+    const paths = (module.work_assignments || [])
+      .flatMap(assignment => assignment.work_submissions || [])
+      .flatMap(submission => submission.submission_files || [])
+      .map(file => file.object_path)
+      .filter(Boolean);
+    for (let index = 0; index < paths.length; index += 100) {
+      const { error: storageError } = await client.storage
+        .from("work-submissions")
+        .remove(paths.slice(index, index + 100));
+      if (storageError) throw storageError;
+    }
+
+    const { error } = await client.from("project_modules").delete().eq("id", body.id);
+    if (error) throw error;
+    return Response.json({ message: `Module "${module.title}" was permanently deleted.` });
+  } catch (error) {
+    return apiFailure(error);
+  }
+}

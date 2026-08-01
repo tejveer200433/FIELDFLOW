@@ -72,3 +72,38 @@ export async function PATCH(request) {
     return apiFailure(error);
   }
 }
+
+export async function DELETE(request) {
+  try {
+    const { client } = await requirePermission(request, "projects.manage");
+    const body = await request.json();
+    if (!body.id) throw new ApiError("Project id is required.");
+
+    const { data: project, error: projectError } = await client
+      .from("projects")
+      .select("id,title,project_modules(work_assignments(work_submissions(submission_files(object_path))))")
+      .eq("id", body.id)
+      .maybeSingle();
+    if (projectError) throw projectError;
+    if (!project) throw new ApiError("Project not found.", 404);
+
+    const paths = (project.project_modules || [])
+      .flatMap(module => module.work_assignments || [])
+      .flatMap(assignment => assignment.work_submissions || [])
+      .flatMap(submission => submission.submission_files || [])
+      .map(file => file.object_path)
+      .filter(Boolean);
+    for (let index = 0; index < paths.length; index += 100) {
+      const { error: storageError } = await client.storage
+        .from("work-submissions")
+        .remove(paths.slice(index, index + 100));
+      if (storageError) throw storageError;
+    }
+
+    const { error } = await client.from("projects").delete().eq("id", body.id);
+    if (error) throw error;
+    return Response.json({ message: `Project "${project.title}" was permanently deleted.` });
+  } catch (error) {
+    return apiFailure(error);
+  }
+}

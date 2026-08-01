@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, ChevronRight, ExternalLink, FileText, FolderKanban, Plus, UsersRound, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, ExternalLink, FileText, FolderKanban, Plus, Trash2, UsersRound, X } from "lucide-react";
 import { apiJson } from "@/lib/apiClient";
 import { useAccess } from "@/components/AccessContext";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
@@ -29,6 +29,21 @@ function Modal({ title, onClose, children, wide = false }) {
   </div>;
 }
 
+function DeleteConfirmation({ target, busy, onClose, onConfirm }) {
+  if (!target) return null;
+  const isProject = target.type === "project";
+  return <Modal title={`Delete ${target.type}?`} onClose={busy ? () => {} : onClose}>
+    <div className="flex gap-3 rounded-2xl bg-rose-50 p-4 text-rose-800">
+      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+      <div><p className="font-bold">This action is permanent.</p><p className="mt-1 text-sm">Deleting <strong>{target.name}</strong> will also delete all {isProject ? "modules, assignments, submissions, and uploaded files in this project" : "assignments, submissions, and uploaded files in this module"}.</p></div>
+    </div>
+    <div className="mt-6 flex justify-end gap-3">
+      <button disabled={busy} onClick={onClose} className="btn-secondary">Cancel</button>
+      <button disabled={busy} onClick={onConfirm} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 font-bold text-white hover:bg-rose-700 disabled:opacity-60"><Trash2 className="h-4 w-4" />{busy ? "Deleting…" : `Delete ${target.type}`}</button>
+    </div>
+  </Modal>;
+}
+
 function ReviewControls({ busy, onReview }) {
   const [comment, setComment] = useState("");
   return <div className="mt-4 border-t border-blue-100 pt-4">
@@ -47,6 +62,7 @@ export default function ProjectManagement() {
   const [projectModal, setProjectModal] = useState(false);
   const [moduleModal, setModuleModal] = useState(false);
   const [moduleTarget, setModuleTarget] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -148,6 +164,25 @@ export default function ProjectManagement() {
     }
   }
 
+  async function deleteItem() {
+    if (!deleteTarget) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const endpoint = deleteTarget.type === "project" ? "/api/projects" : "/api/modules";
+      const payload = await apiJson(endpoint, { method: "DELETE", body: JSON.stringify({ id: deleteTarget.id }) });
+      if (deleteTarget.type === "project" && selectedId === deleteTarget.id) setSelectedId("");
+      setDeleteTarget(null);
+      setMessage(payload.message);
+      await load();
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function openFile(file) {
     try {
       const payload = await apiJson(`/api/files?path=${encodeURIComponent(file.path)}`);
@@ -161,7 +196,7 @@ export default function ProjectManagement() {
     <button onClick={() => setSelectedId("")} className="mb-5 inline-flex items-center gap-2 font-bold text-blue-600"><ArrowLeft className="h-4 w-4" />All projects</button>
     <div className="mb-7 flex flex-wrap items-start justify-between gap-4">
       <div><div className="flex flex-wrap gap-2"><Badge value={selected.status} /><Badge value={selected.priority} /><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold">{selected.category}</span></div><h1 className="mt-3 text-3xl font-extrabold sm:text-4xl">{selected.title}</h1><p className="mt-2 max-w-3xl text-slate-500">{selected.description || "No project description."}</p></div>
-      {canManage && <div className="flex flex-wrap gap-2"><select value={selected.status} onChange={event => updateProject(event.target.value)} className="input w-auto">{projectStatuses.map(item => <option key={item}>{item}</option>)}</select><button onClick={() => { setModuleTarget(null); setModuleModal(true); }} className="btn-primary"><Plus />Add module</button></div>}
+      {canManage && <div className="flex flex-wrap gap-2"><select value={selected.status} onChange={event => updateProject(event.target.value)} className="input w-auto">{projectStatuses.map(item => <option key={item}>{item}</option>)}</select><button onClick={() => { setModuleTarget(null); setModuleModal(true); }} className="btn-primary"><Plus />Add module</button><button onClick={() => setDeleteTarget({ type: "project", id: selected.id, name: selected.title })} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2.5 font-bold text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" />Delete project</button></div>}
     </div>
     {message && <p className="mb-5 rounded-2xl bg-emerald-50 p-4 text-emerald-700">{message}</p>}
     {error && <p className="mb-5 rounded-2xl bg-rose-50 p-4 text-rose-700">{error}</p>}
@@ -169,7 +204,7 @@ export default function ProjectManagement() {
     <section className="card mt-6 p-6"><div className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4"><div><p className="text-slate-500">Client</p><strong>{selected.clientCompany || "—"}</strong></div><div><p className="text-slate-500">Contact</p><strong>{selected.contactPerson || "—"}</strong></div><div><p className="text-slate-500">Project owner</p><strong>{selected.owner}</strong></div><div><p className="text-slate-500">Site</p><strong>{selected.siteAddress || "—"}</strong></div></div></section>
     <div className="mt-7 space-y-5">
       {selected.modules.map(module => <section key={module.id} className="card overflow-hidden">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b bg-slate-50 p-5"><div><h2 className="text-xl font-bold">{module.title}</h2><p className="mt-1 text-sm text-slate-500">{module.description || "No module description."}</p></div>{canManage && <button onClick={() => { setModuleTarget(module); setModuleModal(true); }} className="btn-secondary"><UsersRound className="h-4 w-4" />Assign teammate</button>}</div>
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b bg-slate-50 p-5"><div><h2 className="text-xl font-bold">{module.title}</h2><p className="mt-1 text-sm text-slate-500">{module.description || "No module description."}</p></div>{canManage && <div className="flex flex-wrap gap-2"><button onClick={() => { setModuleTarget(module); setModuleModal(true); }} className="btn-secondary"><UsersRound className="h-4 w-4" />Assign teammate</button><button onClick={() => setDeleteTarget({ type: "module", id: module.id, name: module.title })} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2.5 font-bold text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" />Delete module</button></div>}</div>
         {module.checklist.length > 0 && <div className="border-b px-5 py-4"><p className="text-xs font-bold uppercase tracking-widest text-slate-500">Checklist</p><div className="mt-2 flex flex-wrap gap-2">{module.checklist.map(item => <span key={item} className="rounded-full bg-slate-100 px-3 py-1 text-xs">{item}</span>)}</div></div>}
         <div className="divide-y">{module.assignments.map(assignment => {
           const latest = assignment.submissions[0];
@@ -181,6 +216,7 @@ export default function ProjectManagement() {
       {!selected.modules.length && <div className="card p-12 text-center"><FolderKanban className="mx-auto h-10 w-10 text-blue-500" /><h2 className="mt-3 font-bold">No modules available</h2></div>}
     </div>
     {moduleModal && canManage && <ModuleForm module={moduleTarget} assignees={assignees} reviewers={reviewers} busy={busy} onClose={() => { setModuleModal(false); setModuleTarget(null); }} onSubmit={createModuleAssignment} />}
+    <DeleteConfirmation target={deleteTarget} busy={busy} onClose={() => setDeleteTarget(null)} onConfirm={deleteItem} />
   </>;
 
   return <>
@@ -188,8 +224,9 @@ export default function ProjectManagement() {
     {message && <p className="mb-5 rounded-2xl bg-emerald-50 p-4 text-emerald-700">{message}</p>}
     {error && <p className="mb-5 rounded-2xl bg-rose-50 p-4 text-rose-700">{error}</p>}
     <div className="grid gap-4 sm:grid-cols-3"><div className="card p-5"><p className="text-xs uppercase text-slate-500">Active projects</p><strong className="text-3xl text-blue-700">{totals.active}</strong></div><div className="card p-5"><p className="text-xs uppercase text-slate-500">Awaiting review</p><strong className="text-3xl text-amber-600">{totals.review}</strong></div><div className="card p-5"><p className="text-xs uppercase text-slate-500">Past deadline</p><strong className="text-3xl text-rose-600">{totals.due}</strong></div></div>
-    <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{projects.map(project => <button key={project.id} onClick={() => setSelectedId(project.id)} className="card p-6 text-left transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg"><div className="flex justify-between gap-3"><Badge value={project.status} /><Badge value={project.priority} /></div><h2 className="mt-4 text-xl font-bold">{project.title}</h2><p className="mt-1 text-sm text-slate-500">{project.clientCompany || project.category}</p><div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-100"><span className="block h-full bg-blue-600" style={{ width: `${project.progress}%` }} /></div><div className="mt-2 flex justify-between text-xs text-slate-500"><span>{project.progress}% complete</span><span>{project.modules.length} modules</span></div><div className="mt-5 flex justify-end border-t pt-4"><ChevronRight className="text-blue-600" /></div></button>)}{!projects.length && <div className="card col-span-full p-14 text-center"><FolderKanban className="mx-auto h-12 w-12 text-blue-500" /><h2 className="mt-4 text-xl font-bold">No projects available</h2><p className="mt-2 text-slate-500">Projects in your permitted scope will appear here.</p></div>}</div>
+    <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{projects.map(project => <article key={project.id} className="card relative p-6 transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg">{canManage && <button aria-label={`Delete ${project.title}`} onClick={() => setDeleteTarget({ type: "project", id: project.id, name: project.title })} className="absolute bottom-4 left-5 z-10 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-bold text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" />Delete</button>}<button onClick={() => setSelectedId(project.id)} className="w-full text-left"><div className="flex justify-between gap-3"><Badge value={project.status} /><Badge value={project.priority} /></div><h2 className="mt-4 text-xl font-bold">{project.title}</h2><p className="mt-1 text-sm text-slate-500">{project.clientCompany || project.category}</p><div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-100"><span className="block h-full bg-blue-600" style={{ width: `${project.progress}%` }} /></div><div className="mt-2 flex justify-between text-xs text-slate-500"><span>{project.progress}% complete</span><span>{project.modules.length} modules</span></div><div className="mt-5 flex justify-end border-t pt-4"><ChevronRight className="text-blue-600" /></div></button></article>)}{!projects.length && <div className="card col-span-full p-14 text-center"><FolderKanban className="mx-auto h-12 w-12 text-blue-500" /><h2 className="mt-4 text-xl font-bold">No projects available</h2><p className="mt-2 text-slate-500">Projects in your permitted scope will appear here.</p></div>}</div>
     {projectModal && canManage && <ProjectForm busy={busy} onClose={() => setProjectModal(false)} onSubmit={createProject} />}
+    <DeleteConfirmation target={deleteTarget} busy={busy} onClose={() => setDeleteTarget(null)} onConfirm={deleteItem} />
   </>;
 }
 
