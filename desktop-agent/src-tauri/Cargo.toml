@@ -1,6 +1,6 @@
 [package]
 name = "fieldflow-activity-agent"
-version = "0.3.2"
+version = "0.3.3"
 description = "Additive FIELD-FLOW Windows activity agent"
 authors = ["FIELD-FLOW"]
 edition = "2021"

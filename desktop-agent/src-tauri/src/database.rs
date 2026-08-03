@@ -1,6 +1,6 @@
 use std::{path::Path, sync::Mutex};
 
-use chrono::Utc;
+use chrono::{SecondsFormat, Utc};
 use rusqlite::{params, params_from_iter, Connection};
 
 use crate::models::{NewSample, NewWebsiteSample, PendingSample, PendingWebsiteSample, SyncResult};
@@ -71,7 +71,7 @@ impl Database {
 }
 
 pub fn enqueue(database: &Database, sample: &NewSample) -> Result<(), String> {
-    let now = Utc::now().to_rfc3339();
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     let connection = database
         .0
         .lock()
@@ -149,7 +149,7 @@ pub fn enqueue_website_for_active_session(
     browser_name: &str,
     duration_seconds: i64,
 ) -> Result<Option<NewWebsiteSample>, String> {
-    let now = Utc::now().to_rfc3339();
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     let connection = database
         .0
         .lock()

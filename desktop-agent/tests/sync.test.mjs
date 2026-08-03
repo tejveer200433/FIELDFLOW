@@ -2,10 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   groupSamplesBySession,
+  normalizeUtcTimestamp,
   reconcileBatch,
   syncPendingSamples,
   syncPendingWebsiteSamples
 } from "../src/lib/sync.js";
+
+test("UTC timestamps with an explicit zero offset are normalized for the API", () => {
+  assert.equal(
+    normalizeUtcTimestamp("2026-08-03T14:43:00+00:00"),
+    "2026-08-03T14:43:00.000Z"
+  );
+  assert.equal(normalizeUtcTimestamp("not-a-timestamp"), "not-a-timestamp");
+});
 
 test("accepted and duplicate samples are confirmed while rejected samples remain queued", () => {
   const samples = [
@@ -110,7 +119,7 @@ test("website samples upload through the authenticated agent using their origina
   const queued = [{
     localSampleId: "website-one",
     trackingSessionId: "session-a",
-    capturedAt: "2026-08-03T12:00:00Z",
+    capturedAt: "2026-08-03T12:00:00+00:00",
     domain: "example.com",
     browserName: "chrome",
     durationSeconds: 60
@@ -134,7 +143,7 @@ test("website samples upload through the authenticated agent using their origina
   assert.equal(upload.trackingSessionId, "session-a");
   assert.deepEqual(upload.samples, [{
     localSampleId: "website-one",
-    capturedAt: "2026-08-03T12:00:00Z",
+    capturedAt: "2026-08-03T12:00:00.000Z",
     domain: "example.com",
     browserName: "chrome",
     durationSeconds: 60

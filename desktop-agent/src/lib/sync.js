@@ -25,13 +25,24 @@ export function groupSamplesBySession(samples) {
   }));
 }
 
+export function normalizeUtcTimestamp(value) {
+  if (typeof value !== "string") return value;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
+}
+
+function prepareUploadSample(sample) {
+  const payload = { ...sample };
+  delete payload.trackingSessionId;
+  if (Object.hasOwn(payload, "capturedAt")) {
+    payload.capturedAt = normalizeUtcTimestamp(payload.capturedAt);
+  }
+  return payload;
+}
+
 async function syncBatch(api, deviceId, sessionId, samples, invokeCommand) {
   const ids = samples.map(sample => sample.localSampleId);
-  const uploadSamples = samples.map(sample => {
-    const payload = { ...sample };
-    delete payload.trackingSessionId;
-    return payload;
-  });
+  const uploadSamples = samples.map(prepareUploadSample);
   await invokeCommand("mark_samples_uploading", { ids });
   try {
     const result = await api.ingest({
@@ -57,11 +68,7 @@ async function syncBatch(api, deviceId, sessionId, samples, invokeCommand) {
 
 async function syncWebsiteBatch(api, sessionId, samples, invokeCommand) {
   const ids = samples.map(sample => sample.localSampleId);
-  const uploadSamples = samples.map(sample => {
-    const payload = { ...sample };
-    delete payload.trackingSessionId;
-    return payload;
-  });
+  const uploadSamples = samples.map(prepareUploadSample);
   await invokeCommand("mark_website_samples_uploading", { ids });
   try {
     const result = await api.ingestWebsites({
