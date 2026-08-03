@@ -15,13 +15,21 @@ test("the shared extension identifies supported browser families", () => {
   assert.equal(browserNameFromUserAgent("Mozilla Chrome/130.0 Safari/537.36"), "chrome");
 });
 
-test("the extension supports Chromium and Firefox background environments", () => {
+test("the unpacked pilot extension uses a valid Chromium Manifest V3 worker", () => {
   const manifest = JSON.parse(read("browser-extension/manifest.json"));
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.background.service_worker, "background.js");
-  assert.deepEqual(manifest.background.scripts, ["background.js"]);
+  assert.equal(manifest.background.scripts, undefined);
   assert.equal(manifest.background.type, "module");
-  assert.equal(manifest.browser_specific_settings.gecko.strict_min_version, "121.0");
+});
+
+test("store packages keep browser-specific background declarations", () => {
+  const chromium = JSON.parse(read("browser-extension/store/manifest.chromium.json"));
+  const firefox = JSON.parse(read("browser-extension/store/manifest.firefox.json"));
+  assert.equal(chromium.background.service_worker, "background.js");
+  assert.equal(chromium.background.scripts, undefined);
+  assert.deepEqual(firefox.background.scripts, ["background.js"]);
+  assert.equal(firefox.background.service_worker, undefined);
 });
 
 test("website collection is automatic and contains no separate authentication", () => {

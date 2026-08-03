@@ -9,15 +9,8 @@
     "http://127.0.0.1:38473/*"
   ],
   "background": {
-    "scripts": ["background.js"],
     "service_worker": "background.js",
     "type": "module"
-  },
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "website-activity@fieldflow.local",
-      "strict_min_version": "121.0"
-    }
   },
   "action": { "default_title": "FieldFlow Website Activity", "default_popup": "popup.html" }
 }
