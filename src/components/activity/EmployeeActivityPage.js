@@ -65,7 +65,7 @@ export default function EmployeeActivityPage() {
     const range = dateRange(rangeDays);
     const requests = [
       getActivePolicy(),
-      getDevices(),
+      getDevices(employeeId),
       getCurrentSession(),
       getMyActivity(employeeId, { ...range, limit: 50 })
     ];

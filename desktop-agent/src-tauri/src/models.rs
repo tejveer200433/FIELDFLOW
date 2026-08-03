@@ -17,12 +17,34 @@ pub struct NewSample {
 #[serde(rename_all = "camelCase")]
 pub struct PendingSample {
     pub local_sample_id: String,
+    pub tracking_session_id: String,
     pub captured_at: String,
     pub keyboard_event_count: i64,
     pub mouse_event_count: i64,
     pub idle_seconds: i64,
     pub active_application: Option<String>,
     pub screen_locked: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewWebsiteSample {
+    pub local_sample_id: String,
+    pub tracking_session_id: String,
+    pub captured_at: String,
+    pub domain: String,
+    pub browser_name: String,
+    pub duration_seconds: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingWebsiteSample {
+    pub local_sample_id: String,
+    pub tracking_session_id: String,
+    pub captured_at: String,
+    pub domain: String,
+    pub browser_name: String,
+    pub duration_seconds: i64,
 }
 
 #[derive(Debug, Deserialize)]

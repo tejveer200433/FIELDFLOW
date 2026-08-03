@@ -9,6 +9,6 @@ export function policyAcknowledgementText(policy) {
     `FieldFlow monitoring policy version ${policy.policyVersion}.`,
     `Tracking is ${policy.trackingEnabled ? "enabled" : "disabled"}.`,
     `Application-name collection is ${policy.collectApplicationNames ? "enabled" : "disabled"}.`,
-    "FieldFlow collects aggregate activity signals only. It does not collect typed text, key names, screenshots, clipboard content, window titles, file paths, or mouse coordinates."
+    "FieldFlow collects aggregate keyboard and mouse activity counts only. It does not collect typed text, key names or codes, screenshots, clipboard content, window titles, file paths, mouse coordinates, or click targets."
   ].join(" ");
 }

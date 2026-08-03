@@ -41,8 +41,9 @@ export function acknowledgePolicy({ policyId, policyVersion, acknowledgementText
   });
 }
 
-export function getDevices() {
-  return activityRequest("/devices?limit=100").then(payload => payload.data);
+export function getDevices(employeeId) {
+  const query = new URLSearchParams({ employeeId, limit: "100" });
+  return activityRequest(`/devices?${query}`).then(payload => payload.data);
 }
 
 export function getCurrentSession() {

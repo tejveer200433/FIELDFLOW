@@ -1,4 +1,4 @@
-export const DEFAULT_AGENT_VERSION = "0.1.0";
+export const DEFAULT_AGENT_VERSION = "0.3.2";
 export const AGENT_VERSION = import.meta.env?.VITE_AGENT_VERSION || DEFAULT_AGENT_VERSION;
 
 function trimTrailingSlash(value) {
@@ -21,6 +21,7 @@ export function readConfiguration(environment = import.meta.env) {
     supabaseAnonKey,
     agentVersion: environment.VITE_AGENT_VERSION || DEFAULT_AGENT_VERSION,
     debug: environment.VITE_DEBUG_LOGGING === "true",
+    updatesEnabled: environment.VITE_AGENT_UPDATES_ENABLED === "true",
     valid: missing.length === 0,
     missing
   };

@@ -1,0 +1,13 @@
+{
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE_WITH_TAURI_SIGNING_PUBLIC_KEY_CONTENT",
+      "endpoints": [
+        "https://fieldflow-henna.vercel.app/api/activity/agent/releases/{{target}}/{{arch}}/{{current_version}}"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

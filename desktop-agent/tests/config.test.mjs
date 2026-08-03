@@ -25,8 +25,10 @@ test("configuration supports explicit agent version and debug logging", () => {
     VITE_SUPABASE_URL: "https://example.supabase.co",
     VITE_SUPABASE_ANON_KEY: "public-key",
     VITE_AGENT_VERSION: "0.2.0",
-    VITE_DEBUG_LOGGING: "true"
+    VITE_DEBUG_LOGGING: "true",
+    VITE_AGENT_UPDATES_ENABLED: "true"
   });
   assert.equal(result.agentVersion, "0.2.0");
   assert.equal(result.debug, true);
+  assert.equal(result.updatesEnabled, true);
 });

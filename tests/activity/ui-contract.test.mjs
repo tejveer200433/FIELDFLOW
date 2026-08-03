@@ -55,6 +55,13 @@ test("sensitive device data and raw activity values are never rendered", () => {
   assert.match(privacy, /Screenshots/);
 });
 
+test("employee device controls are explicitly scoped to the signed-in employee", () => {
+  assert.match(page, /getDevices\(employeeId\)/);
+  assert.match(client, /export function getDevices\(employeeId\)/);
+  assert.match(client, /new URLSearchParams\(\{ employeeId, limit: "100" \}\)/);
+  assert.doesNotMatch(page, /getDevices\(\)/);
+});
+
 test("aggregate keyboard and mouse counts are returned and shown without event details", () => {
   const inputSummary = read("src/components/activity/InputActivitySummary.js");
   const employeeRoute = read("src/app/api/activity/employees/[employeeId]/route.js");

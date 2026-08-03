@@ -1,3 +1,4 @@
+mod browser_bridge;
 mod commands;
 mod database;
 mod input;
@@ -12,6 +13,7 @@ use tauri::{
     tray::TrayIconBuilder,
     Emitter, Manager,
 };
+use tauri_plugin_autostart::MacosLauncher;
 
 fn tray_image() -> Image<'static> {
     let mut pixels = vec![0u8; 16 * 16 * 4];
@@ -30,6 +32,21 @@ fn tray_image() -> Image<'static> {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if args.iter().any(|argument| argument == "--minimized") {
+                return;
+            }
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec!["--minimized"]),
+        ))
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
@@ -37,6 +54,10 @@ pub fn run() {
                 database::Database::open(&data_dir.join("activity-queue.db"))
                     .map_err(std::io::Error::other)?,
             );
+            if browser_bridge::start(app.handle().clone()).is_err() {
+                let _ = logging::write(app.handle(), "browser_bridge_start_failed", "warn", false);
+            }
+            let _ = input::start_monitoring();
             if let Some(window) = app.get_webview_window("main") {
                 let window_to_hide = window.clone();
                 window.on_window_event(move |event| {
@@ -45,6 +66,9 @@ pub fn run() {
                         let _ = window_to_hide.hide();
                     }
                 });
+                if std::env::args().any(|argument| argument == "--minimized") {
+                    let _ = window.hide();
+                }
             }
 
             let open = MenuItem::with_id(app, "open", "Open FieldFlow", true, None::<&str>)?;
@@ -105,14 +129,19 @@ pub fn run() {
             commands::secure_delete,
             commands::get_idle_seconds,
             commands::take_input_activity_counts,
+            commands::set_input_collection_enabled,
             commands::get_screen_locked,
             commands::get_active_application,
             commands::get_device_identity,
             commands::enqueue_sample,
             commands::pending_samples,
+            commands::pending_website_samples,
             commands::mark_samples_uploading,
+            commands::mark_website_samples_uploading,
             commands::release_samples,
+            commands::release_website_samples,
             commands::apply_sync_result,
+            commands::apply_website_sync_result,
             commands::recover_uploading_samples,
             commands::pending_sample_count,
             commands::set_agent_state,

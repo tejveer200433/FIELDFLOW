@@ -3,8 +3,8 @@
 ## Collected during an explicit tracking session
 
 - UTC sample timestamp
-- Aggregate keyboard event count (`0` in the current safe fallback implementation)
-- Aggregate mouse event count (`0` in the current safe fallback implementation)
+- Aggregate keyboard key-down count
+- Aggregate mouse activity-event count
 - Seconds since the last Windows input event
 - Screen locked state
 - Foreground executable filename stem only, and only when enabled by the active monitoring policy
@@ -13,7 +13,7 @@
 ## Never collected
 
 - Typed text, keystroke content, key names, scan codes, virtual key codes, or shortcuts
-- Raw input events or mouse-button identities
+- Keyboard and mouse event details or mouse-button identities
 - Mouse position, coordinates, paths, or click targets
 - Screenshots, screen video, webcam, or microphone
 - Clipboard content
@@ -34,5 +34,6 @@
 
 - Tracking starts only after the employee explicitly presses Start or chooses Start from the tray.
 - Tracking stops when the employee presses Stop or chooses Stop from the tray.
+- Aggregate input counters are enabled only for the duration of that explicit tracking session and reset when tracking starts or stops.
 - Required policy acknowledgement is shown before tracking can start.
 - Quitting while tracking requires confirmation and attempts a final sync followed by an explicit session stop.

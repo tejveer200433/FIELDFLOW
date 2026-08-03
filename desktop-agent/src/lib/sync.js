@@ -10,16 +10,41 @@ export function reconcileBatch(samples, result) {
   };
 }
 
-export async function syncPendingSamples(api, deviceId, sessionId, invokeCommand = invoke) {
-  const samples = await invokeCommand("pending_samples", { trackingSessionId: sessionId, limit: 100 });
-  if (!samples.length) return { uploaded: 0, rejected: 0 };
+export function groupSamplesBySession(samples) {
+  const groups = new Map();
+  for (const sample of samples) {
+    const sessionId = sample.trackingSessionId;
+    if (!sessionId) continue;
+    const group = groups.get(sessionId) || [];
+    group.push(sample);
+    groups.set(sessionId, group);
+  }
+  return [...groups.entries()].map(([sessionId, sessionSamples]) => ({
+    sessionId,
+    samples: sessionSamples
+  }));
+}
+
+async function syncBatch(api, deviceId, sessionId, samples, invokeCommand) {
   const ids = samples.map(sample => sample.localSampleId);
+  const uploadSamples = samples.map(sample => {
+    const payload = { ...sample };
+    delete payload.trackingSessionId;
+    return payload;
+  });
   await invokeCommand("mark_samples_uploading", { ids });
   try {
-    const result = await api.ingest({ deviceId, trackingSessionId: sessionId, samples });
+    const result = await api.ingest({
+      deviceId,
+      trackingSessionId: sessionId,
+      samples: uploadSamples
+    });
     const reconciliation = reconcileBatch(samples, result);
     await invokeCommand("apply_sync_result", { result: reconciliation });
-    return { uploaded: reconciliation.confirmedIds.length, rejected: reconciliation.failed.length };
+    return {
+      uploaded: reconciliation.confirmedIds.length,
+      rejected: reconciliation.failed.length
+    };
   } catch (error) {
     await invokeCommand("release_samples", {
       ids,
@@ -28,4 +53,88 @@ export async function syncPendingSamples(api, deviceId, sessionId, invokeCommand
     });
     throw error;
   }
+}
+
+async function syncWebsiteBatch(api, sessionId, samples, invokeCommand) {
+  const ids = samples.map(sample => sample.localSampleId);
+  const uploadSamples = samples.map(sample => {
+    const payload = { ...sample };
+    delete payload.trackingSessionId;
+    return payload;
+  });
+  await invokeCommand("mark_website_samples_uploading", { ids });
+  try {
+    const result = await api.ingestWebsites({
+      trackingSessionId: sessionId,
+      samples: uploadSamples
+    });
+    const reconciliation = reconcileBatch(samples, result);
+    await invokeCommand("apply_website_sync_result", { result: reconciliation });
+    return {
+      uploaded: reconciliation.confirmedIds.length,
+      rejected: reconciliation.failed.length
+    };
+  } catch (error) {
+    await invokeCommand("release_website_samples", {
+      ids,
+      error: error.code || "NETWORK_ERROR",
+      retryAfterSeconds: error.retryAfterSeconds || null
+    });
+    throw error;
+  }
+}
+
+export async function syncPendingSamples(api, deviceId, invokeCommand = invoke) {
+  const samples = await invokeCommand("pending_samples", { limit: 100 });
+  if (!samples.length) return { uploaded: 0, rejected: 0 };
+  const totals = { uploaded: 0, rejected: 0 };
+  const errors = [];
+  for (const group of groupSamplesBySession(samples)) {
+    try {
+      const result = await syncBatch(api, deviceId, group.sessionId, group.samples, invokeCommand);
+      totals.uploaded += result.uploaded;
+      totals.rejected += result.rejected;
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length) throw errors[0];
+  return totals;
+}
+
+export async function syncPendingWebsiteSamples(api, invokeCommand = invoke) {
+  const samples = await invokeCommand("pending_website_samples", { limit: 100 });
+  if (!samples.length) return { uploaded: 0, rejected: 0 };
+  const totals = { uploaded: 0, rejected: 0 };
+  const errors = [];
+  for (const group of groupSamplesBySession(samples)) {
+    try {
+      const result = await syncWebsiteBatch(api, group.sessionId, group.samples, invokeCommand);
+      totals.uploaded += result.uploaded;
+      totals.rejected += result.rejected;
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length) throw errors[0];
+  return totals;
+}
+
+export async function syncAllPending(api, deviceId, invokeCommand = invoke) {
+  const totals = { uploaded: 0, rejected: 0 };
+  const errors = [];
+  for (const operation of [
+    () => syncPendingSamples(api, deviceId, invokeCommand),
+    () => syncPendingWebsiteSamples(api, invokeCommand)
+  ]) {
+    try {
+      const result = await operation();
+      totals.uploaded += result.uploaded;
+      totals.rejected += result.rejected;
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length) throw errors[0];
+  return totals;
 }

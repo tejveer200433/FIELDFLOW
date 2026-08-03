@@ -19,7 +19,8 @@ The repository does not install these system prerequisites automatically.
 3. Use the same public Supabase URL and anonymous key as the web application.
 4. Set `VITE_AGENT_VERSION` to the packaged agent version.
 5. Leave `VITE_DEBUG_LOGGING=false` unless diagnosing a development issue.
-6. Do not put a service-role key in this directory.
+6. Leave `VITE_AGENT_UPDATES_ENABLED=false` for development and unsigned builds.
+7. Do not put a service-role key or updater private key in this directory.
 
 For local web development, `VITE_FIELDFLOW_API_URL=http://localhost:3000`.
 
@@ -48,6 +49,19 @@ npm run tauri:build
 The Tauri build produces a Windows NSIS installer beneath `src-tauri/target/release/bundle/nsis`.
 
 The installer is not code-signed. Windows may show an unknown-publisher warning. Production distribution requires an organisation-controlled signing certificate and release process.
+
+## Signed automatic updates
+
+The packaged agent can check for updates 30 seconds after startup and every six hours. Before installation it attempts to synchronize queued samples, records a restart marker in SQLite, and leaves the server tracking session active. Windows Credential Manager credentials and the SQLite queue remain in their existing application-data locations, so startup recovery can reuse the employee session, synchronize pending records, and resume the same server tracking session.
+
+Tauri update signature verification cannot be disabled. Before producing the first update-enabled installer:
+
+1. Generate and securely back up a password-protected Tauri updater signing key outside this repository.
+2. Put only its public key into a copy of `src-tauri/tauri.updater.conf.example.json`.
+3. Build with that merged Tauri configuration, `VITE_AGENT_UPDATES_ENABLED=true`, and the signing-key environment variables.
+4. Publish the generated NSIS artifact and `.sig`, then configure the FieldFlow server-only release environment values.
+
+Never commit the private signing key, its password, or a signed release secret. Losing the private key prevents publishing trusted updates to already-installed agents.
 
 ## Architecture
 
@@ -100,21 +114,26 @@ The NSIS uninstaller removes application binaries. Treat the Tauri application-d
 
 ## Known limitations
 
-- Windows only; no browser extension or mobile agent.
-- Keyboard and mouse counts are zero under the no-hook safety decision.
+- Windows desktop agent only; domain collection additionally requires the managed cross-browser extension.
+- Keyboard key-down and mouse activity counts are collected only as aggregate counters during an explicit tracking session.
 - Samples belonging to an already-ended session remain preserved locally until the FIELD-FLOW API supports bounded ended-session ingestion.
 - Sleep/resume relies on webview visibility/network events and needs device acceptance testing.
 - SQLite corruption has no automated repair UI.
 - Last-sync UI state is not persisted across restart.
 - The installer is unsigned.
+- Automatic updates remain disabled until the first signing key, public updater configuration, and signed release are created.
 - The API limiter is process-local.
 - Server daily-summary generation and retention scheduling are not implemented.
 
 ## Input safety decision
 
-This version intentionally does not install low-level keyboard hooks, Raw Input listeners, mouse hooks, or accessibility listeners. Those Windows APIs expose key codes, mouse-button identities, or pointer coordinates to the process, even if a later step discards them.
+This version installs Windows low-level keyboard and mouse notification hooks, but the callbacks never inspect the event-detail structures. They increment only in-memory aggregate counters while an explicit tracking session is active. Key identities, key codes, typed content, mouse buttons, coordinates, paths, and click targets are never retained, logged, placed in SQLite, or transmitted.
 
-The agent uses the official Windows `GetLastInputInfo` API only to calculate time since the last user input. Keyboard and mouse event counts therefore remain `0` under the safe fallback rule. No typed content, key names, key codes, mouse coordinates, or raw input events enter process memory, logs, SQLite, or network payloads.
+## Windows startup and recovery
+
+Packaged production builds register the agent to start automatically at Windows sign-in. Auto-start launches it minimized with a visible system-tray icon. After the employee signs in and accepts the monitoring policy once, the securely stored session is reused. If both the server and local state identify the same active tracking session, collection resumes automatically. Pending samples are synchronized at startup, after reconnecting, on manual sync, and before and after stopping.
+
+The agent also uses the official Windows `GetLastInputInfo` API to calculate time since the last user input. Aggregate counters reset when tracking starts, when a sample reads them, and when tracking stops.
 
 Application collection, when enabled by policy, records only the foreground executable filename stem (for example `chrome`). It excludes the window title, document name, URL, full executable path, command line, and username.
 

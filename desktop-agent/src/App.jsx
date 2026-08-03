@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { enable as enableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
 import { createFieldFlowAuth, verifyEmployeeAccess } from "./lib/auth";
 import { createActivityApi } from "./lib/api";
 import { captureSample } from "./lib/sampler";
+import { isHeartbeatRateLimit, shouldSendHeartbeat } from "./lib/heartbeat";
+import { decideStartupTracking, reconcileTrackingSession } from "./lib/lifecycle";
 import { policyAcknowledgementText, sha256Hex } from "./lib/policy";
 import { deriveAgentStatus, formatDuration } from "./lib/status";
-import { syncPendingSamples } from "./lib/sync";
+import { syncAllPending } from "./lib/sync";
+import {
+  UPDATE_CHECK_INTERVAL_MS,
+  UPDATE_STARTUP_DELAY_MS,
+  checkAndInstallAgentUpdate
+} from "./lib/updater";
 import { AGENT_VERSION, readConfiguration } from "./config";
 
 const config = readConfiguration();
@@ -31,7 +39,7 @@ function Login({ supabase, onSignedIn }) {
       await onSignedIn();
       setPassword("");
     } catch (submitError) {
-      await supabase.auth.signOut().catch(() => {});
+      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
       setPassword("");
       setError(submitError.message || "Sign in failed.");
     } finally {
@@ -109,18 +117,70 @@ export default function App() {
   const [lastSample, setLastSample] = useState(null);
   const [lastHeartbeat, setLastHeartbeat] = useState(null);
   const [currentApplication, setCurrentApplication] = useState(null);
+  const [updateStatus, setUpdateStatus] = useState(
+    config.updatesEnabled ? "Waiting for automatic check" : "Not configured"
+  );
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
+  const deviceId = device?.deviceId;
   const timers = useRef([]);
   const sampling = useRef(false);
   const syncing = useRef(false);
   const trackingSessionId = useRef(null);
+  const previousOnline = useRef(navigator.onLine);
+  const reconciling = useRef(false);
+  const updating = useRef(false);
+  const heartbeatInFlight = useRef(false);
+  const lastHeartbeatAttemptAt = useRef(0);
 
   const clearTimers = useCallback(() => {
     timers.current.forEach(window.clearInterval);
     timers.current = [];
   }, []);
+
+  const sendHeartbeat = useCallback(async ({
+    targetDeviceId,
+    targetSessionId = trackingSessionId.current,
+    onlineStatus = "online",
+    intervalSeconds = 60,
+    force = false
+  } = {}) => {
+    if (!api || !targetDeviceId || !navigator.onLine || heartbeatInFlight.current) return null;
+    const attemptAt = Date.now();
+    if (!force && !shouldSendHeartbeat({
+      lastAttemptAt: lastHeartbeatAttemptAt.current,
+      now: attemptAt,
+      intervalSeconds
+    })) return null;
+
+    heartbeatInFlight.current = true;
+    lastHeartbeatAttemptAt.current = attemptAt;
+    try {
+      const result = await api.heartbeat({
+        deviceId: targetDeviceId,
+        trackingSessionId: targetSessionId || null,
+        agentVersion: AGENT_VERSION,
+        onlineStatus,
+        batteryLevel: null
+      });
+      setDevice(current => {
+        if (!current || current.status === result.deviceStatus) return current;
+        return { ...current, status: result.deviceStatus };
+      });
+      setLastHeartbeat(new Date());
+      setError(current => current.startsWith("Heartbeat delayed:") ? "" : current);
+      return result;
+    } catch (heartbeatError) {
+      if (isHeartbeatRateLimit(heartbeatError)) {
+        await agentLog("heartbeat_rate_limited", "warn");
+        return null;
+      }
+      throw heartbeatError;
+    } finally {
+      heartbeatInFlight.current = false;
+    }
+  }, [api]);
 
   const refreshQueue = useCallback(async () => {
     const count = await invoke("pending_sample_count");
@@ -166,30 +226,80 @@ export default function App() {
         api.getCurrentSession()
       ]);
       setPolicy(currentPolicy);
-      const [wasTracking, savedSessionId] = await Promise.all([
-        invoke("get_agent_state", { key: "tracking_active" }),
-        invoke("get_agent_state", { key: "tracking_session_id" })
-      ]);
-      const resumable = currentSession.active
-        && wasTracking === "true"
-        && savedSessionId === currentSession.session.sessionId;
-      trackingSessionId.current = resumable ? currentSession.session.sessionId : null;
-      setSession(resumable ? currentSession.session : null);
-      if (currentSession.active && !resumable) {
-        setError("An active server session exists without matching local resume state. Stop it from My Activity before starting a new session.");
-      }
       const registeredDevice = await register();
       await invoke("recover_uploading_samples");
       await refreshQueue();
-      const heartbeat = await api.heartbeat({
-        deviceId: registeredDevice.deviceId,
-        trackingSessionId: resumable ? currentSession.session.sessionId : null,
-        agentVersion: AGENT_VERSION,
-        onlineStatus: "online",
-        batteryLevel: null
+      try {
+        await syncAllPending(api, registeredDevice.deviceId);
+        setLastSync(new Date());
+        await agentLog("startup_sync_succeeded");
+        await refreshQueue();
+      } catch {
+        await agentLog("startup_sync_delayed", "warn");
+      }
+      const authoritativeDevice = registeredDevice;
+      setDevice(authoritativeDevice);
+
+      const saveLocalSession = async activeSession => {
+        await invoke("set_agent_state", { key: "tracking_active", value: "true" });
+        await invoke("set_agent_state", { key: "tracking_session_id", value: activeSession.sessionId });
+        trackingSessionId.current = activeSession.sessionId;
+        setSession(activeSession);
+        await invoke("set_input_collection_enabled", { enabled: true }).catch(inputError => {
+          setError(`Input activity counting unavailable: ${inputError}`);
+        });
+      };
+      const clearLocalSession = async () => {
+        trackingSessionId.current = null;
+        setSession(null);
+        await invoke("set_input_collection_enabled", { enabled: false });
+        await invoke("set_agent_state", { key: "tracking_active", value: "false" });
+        await invoke("set_agent_state", { key: "tracking_session_id", value: "" });
+      };
+
+      const startupAction = decideStartupTracking({
+        policy: currentPolicy,
+        deviceStatus: authoritativeDevice.status,
+        currentSession,
+        deviceId: registeredDevice.deviceId
       });
-      setDevice(current => current ? { ...current, status: heartbeat.deviceStatus } : current);
-      setLastHeartbeat(new Date());
+      if (startupAction === "resume") {
+        await saveLocalSession(currentSession.session);
+        await agentLog("tracking_resumed");
+      } else if (startupAction === "start") {
+        let started;
+        try {
+          started = await api.startSession({
+            deviceId: registeredDevice.deviceId,
+            projectId: null,
+            taskId: null,
+            source: "agent"
+          });
+        } catch (startError) {
+          if (startError.code !== "ACTIVE_SESSION_EXISTS") throw startError;
+          const latest = await api.getCurrentSession();
+          if (!latest.active || latest.session?.deviceId !== registeredDevice.deviceId) throw startError;
+          started = latest.session;
+        }
+        await saveLocalSession(started);
+        await agentLog("tracking_started_automatically");
+      } else {
+        await clearLocalSession();
+        if (startupAction === "other-device") {
+          setError("Tracking is already active on another registered device for this employee.");
+        }
+      }
+      await sendHeartbeat({
+        targetDeviceId: registeredDevice.deviceId,
+        targetSessionId: trackingSessionId.current,
+        intervalSeconds: currentPolicy.heartbeatIntervalSeconds,
+        force: true
+      });
+      const updateResumeRequested = await invoke("get_agent_state", { key: "update_resume_requested" });
+      if (updateResumeRequested === "true") {
+        await invoke("set_agent_state", { key: "update_resume_requested", value: "false" });
+        await agentLog("update_restart_recovered");
+      }
       await agentLog("login_succeeded");
     } catch (initializationError) {
       await agentLog("login_failed", "warn");
@@ -199,7 +309,15 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [api, refreshQueue, register, supabase]);
+  }, [api, refreshQueue, register, sendHeartbeat, supabase]);
+
+  useEffect(() => {
+    if (import.meta.env.DEV) return;
+    isAutostartEnabled()
+      .then(enabled => enabled ? undefined : enableAutostart())
+      .then(() => agentLog("autostart_enabled"))
+      .catch(() => agentLog("autostart_enable_failed", "warn"));
+  }, []);
 
   useEffect(() => {
     if (!supabase) {
@@ -215,16 +333,11 @@ export default function App() {
 
   useEffect(() => {
     const resumeHeartbeat = async () => {
-      if (!account || !device) return;
-      await api.heartbeat({
-        deviceId: device.deviceId,
-        trackingSessionId: session?.sessionId || null,
-        agentVersion: AGENT_VERSION,
-        onlineStatus: "online",
-        batteryLevel: null
-      }).then(result => {
-        setDevice(current => current ? { ...current, status: result.deviceStatus } : current);
-        setLastHeartbeat(new Date());
+      if (!account || !deviceId) return;
+      await sendHeartbeat({
+        targetDeviceId: deviceId,
+        targetSessionId: session?.sessionId || null,
+        intervalSeconds: policy?.heartbeatIntervalSeconds || 60
       })
         .catch(heartbeatError => setError(`Heartbeat delayed: ${heartbeatError.message}`));
     };
@@ -260,10 +373,10 @@ export default function App() {
   });
 
   const performSync = useCallback(async () => {
-    if (!online || !device || !session || syncing.current) return;
+    if (!online || !deviceId || syncing.current) return;
     syncing.current = true;
     try {
-      await syncPendingSamples(api, device.deviceId, session.sessionId);
+      await syncAllPending(api, deviceId);
       setLastSync(new Date());
       await agentLog("sync_succeeded");
       await refreshQueue();
@@ -273,11 +386,88 @@ export default function App() {
     } finally {
       syncing.current = false;
     }
-  }, [api, device, online, refreshQueue, session]);
+  }, [api, deviceId, online, refreshQueue]);
+
+  const checkForUpdates = useCallback(async () => {
+    if (import.meta.env.DEV || !config.updatesEnabled || !online || updating.current) return;
+    updating.current = true;
+    try {
+      const result = await checkAndInstallAgentUpdate({
+        beforeInstall: async () => {
+          if (deviceId) await performSync();
+          await invoke("set_agent_state", { key: "update_resume_requested", value: "true" });
+          await agentLog("update_installing");
+        },
+        onStatus: setUpdateStatus
+      });
+      if (!result.installed) await agentLog("update_check_current");
+    } catch {
+      setUpdateStatus("Automatic check delayed");
+      await agentLog("update_check_delayed", "warn");
+    } finally {
+      updating.current = false;
+    }
+  }, [deviceId, online, performSync]);
+
+  useEffect(() => {
+    if (import.meta.env.DEV || !config.updatesEnabled) return undefined;
+    const startup = window.setTimeout(checkForUpdates, UPDATE_STARTUP_DELAY_MS);
+    const interval = window.setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL_MS);
+    return () => {
+      window.clearTimeout(startup);
+      window.clearInterval(interval);
+    };
+  }, [checkForUpdates]);
+
+  const reconcileWithServer = useCallback(async () => {
+    if (!account || !deviceId || !online || reconciling.current) return;
+    reconciling.current = true;
+    try {
+      const currentSession = await api.getCurrentSession();
+      const resolution = reconcileTrackingSession({
+        localSession: trackingSessionId.current
+          ? { sessionId: trackingSessionId.current }
+          : null,
+        currentSession,
+        deviceId
+      });
+      if (resolution.action === "stop") {
+        trackingSessionId.current = null;
+        setSession(null);
+        sampling.current = false;
+        await invoke("set_input_collection_enabled", { enabled: false });
+        await invoke("set_agent_state", { key: "tracking_active", value: "false" });
+        await invoke("set_agent_state", { key: "tracking_session_id", value: "" });
+        setError("Tracking was stopped on FieldFlow. Local collection has stopped.");
+        await agentLog("tracking_reconciled_stopped");
+      } else if (resolution.action === "resume") {
+        await invoke("set_agent_state", { key: "tracking_active", value: "true" });
+        await invoke("set_agent_state", { key: "tracking_session_id", value: resolution.session.sessionId });
+        trackingSessionId.current = resolution.session.sessionId;
+        setSession(resolution.session);
+        await invoke("set_input_collection_enabled", { enabled: true });
+        setError("");
+        await agentLog("tracking_reconciled_resumed");
+      }
+    } catch (reconcileError) {
+      setError(`Session check delayed: ${reconcileError.message}`);
+      await agentLog("session_reconciliation_delayed", "warn");
+    } finally {
+      reconciling.current = false;
+    }
+  }, [account, api, deviceId, online]);
+
+  useEffect(() => {
+    if (online && !previousOnline.current) {
+      performSync();
+      reconcileWithServer();
+    }
+    previousOnline.current = online;
+  }, [online, performSync, reconcileWithServer]);
 
   useEffect(() => {
     clearTimers();
-    if (!account || !policy || !device) return undefined;
+    if (!account || !policy || !deviceId) return undefined;
     timers.current.push(window.setInterval(() => setNow(Date.now()), 1000));
     timers.current.push(window.setInterval(async () => {
       const idle = await invoke("get_idle_seconds").catch(() => 0);
@@ -285,23 +475,24 @@ export default function App() {
     }, 5000));
     timers.current.push(window.setInterval(async () => {
       const heartbeatIdleSeconds = await invoke("get_idle_seconds").catch(() => 0);
-      await api.heartbeat({
-        deviceId: device.deviceId,
-        trackingSessionId: session?.sessionId || null,
-        agentVersion: AGENT_VERSION,
+      await sendHeartbeat({
+        targetDeviceId: deviceId,
+        targetSessionId: session?.sessionId || null,
+        intervalSeconds: policy.heartbeatIntervalSeconds,
         onlineStatus: deriveAgentStatus({
           online,
           session,
           idleSeconds: heartbeatIdleSeconds,
           idleThresholdSeconds: policy.idleThresholdSeconds
-        }) === "Idle" ? "idle" : online ? "online" : "offline",
-        batteryLevel: null
-      }).then(result => {
-        setDevice(current => current ? { ...current, status: result.deviceStatus } : current);
-        setLastHeartbeat(new Date());
+        }) === "Idle" ? "idle" : online ? "online" : "offline"
       })
         .catch(heartbeatError => setError(`Heartbeat delayed: ${heartbeatError.message}`));
+      await reconcileWithServer();
     }, Math.max(15, policy.heartbeatIntervalSeconds || 60) * 1000));
+    timers.current.push(window.setInterval(
+      performSync,
+      Math.max(30, policy.uploadIntervalSeconds || 300) * 1000
+    ));
     if (session && policy.trackingEnabled) {
       timers.current.push(window.setInterval(async () => {
         if (sampling.current) return;
@@ -321,10 +512,9 @@ export default function App() {
           sampling.current = false;
         }
       }, Math.max(10, policy.sampleIntervalSeconds || 60) * 1000));
-      timers.current.push(window.setInterval(performSync, Math.max(30, policy.uploadIntervalSeconds || 300) * 1000));
     }
     return clearTimers;
-  }, [account, api, clearTimers, device, online, performSync, policy, refreshQueue, session]);
+  }, [account, clearTimers, deviceId, online, performSync, policy, reconcileWithServer, refreshQueue, sendHeartbeat, session]);
 
   async function acknowledge(text) {
     await api.acknowledgePolicy({
@@ -332,7 +522,7 @@ export default function App() {
       policyVersion: policy.policyVersion,
       acknowledgementTextHash: await sha256Hex(text)
     });
-    setPolicy(await api.getPolicy());
+    await initialize();
   }
 
   async function startTracking() {
@@ -344,14 +534,14 @@ export default function App() {
       await invoke("set_agent_state", { key: "tracking_session_id", value: started.sessionId });
       trackingSessionId.current = started.sessionId;
       setSession(started);
-      await api.heartbeat({
-        deviceId: device.deviceId,
-        trackingSessionId: started.sessionId,
-        agentVersion: AGENT_VERSION,
-        onlineStatus: "online",
-        batteryLevel: null
+      await invoke("set_input_collection_enabled", { enabled: true }).catch(inputError => {
+        setError(`Input activity counting unavailable: ${inputError}`);
       });
-      setLastHeartbeat(new Date());
+      await sendHeartbeat({
+        targetDeviceId: device.deviceId,
+        targetSessionId: started.sessionId,
+        intervalSeconds: policy.heartbeatIntervalSeconds
+      });
       await agentLog("tracking_started");
     } catch (startError) {
       if (startError.code === "DEVICE_REVOKED" || startError.code === "DEVICE_NOT_ACTIVE") {
@@ -363,23 +553,40 @@ export default function App() {
 
   async function stopTracking() {
     if (!session) return;
-    trackingSessionId.current = null;
     setError("");
     try {
+      if (!sampling.current) {
+        sampling.current = true;
+        try {
+          const finalSample = await captureSample({
+            sessionId: session.sessionId,
+            collectApplicationNames: policy.collectApplicationNames
+          }, undefined, () => trackingSessionId.current === session.sessionId);
+          if (finalSample) {
+            setLastSample(new Date(finalSample.capturedAt));
+            setCurrentApplication(finalSample.activeApplication);
+            await refreshQueue();
+          }
+        } catch {
+          await agentLog("final_sample_failed", "warn");
+        } finally {
+          sampling.current = false;
+        }
+      }
       await performSync();
       await api.stopSession({ sessionId: session.sessionId, source: "agent" });
+      trackingSessionId.current = null;
+      await invoke("set_input_collection_enabled", { enabled: false });
       await invoke("set_agent_state", { key: "tracking_active", value: "false" });
       await invoke("set_agent_state", { key: "tracking_session_id", value: "" });
       setSession(null);
       sampling.current = false;
-      await api.heartbeat({
-        deviceId: device.deviceId,
-        trackingSessionId: null,
-        agentVersion: AGENT_VERSION,
-        onlineStatus: "online",
-        batteryLevel: null
+      await sendHeartbeat({
+        targetDeviceId: device.deviceId,
+        targetSessionId: null,
+        intervalSeconds: policy.heartbeatIntervalSeconds
       });
-      setLastHeartbeat(new Date());
+      await performSync();
       await agentLog("tracking_stopped");
     } catch (stopError) {
       setError(stopError.message);
@@ -392,7 +599,7 @@ export default function App() {
       return;
     }
     clearTimers();
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
     await agentLog("logout_succeeded");
     setAccount(null);
     setPolicy(null);
@@ -429,7 +636,7 @@ export default function App() {
         {session
           ? <button id="stop-button" className="danger" onClick={stopTracking}>Stop tracking</button>
           : <button id="start-button" onClick={startTracking} disabled={!policy?.trackingEnabled}>Start tracking</button>}
-        <button id="sync-button" className="secondary sync-button" onClick={performSync} disabled={!session || !online}>Sync now</button>
+        <button id="sync-button" className="secondary sync-button" onClick={performSync} disabled={!device || !online}>Sync now</button>
         {!policy?.trackingEnabled && <p className="warning">Activity tracking is currently disabled by your administrator.</p>}
       </section>
       <section className="grid">
@@ -441,6 +648,7 @@ export default function App() {
         <article className="card metric"><span>Last heartbeat</span><strong>{lastHeartbeat ? lastHeartbeat.toLocaleTimeString() : "Not yet"}</strong></article>
         <article className="card metric"><span>Application</span><strong>{policy?.collectApplicationNames ? currentApplication || "Unavailable" : "Disabled"}</strong></article>
         <article className="card metric"><span>Agent version</span><strong>{AGENT_VERSION}</strong></article>
+        <article className="card metric"><span>Automatic updates</span><strong>{updateStatus}</strong></article>
         <article className="card metric"><span>Device status</span><strong>{device?.status || "Unknown"}</strong></article>
         <article className="card metric"><span>Platform</span><strong>{device?.operatingSystemVersion || "Windows"}</strong></article>
         <article className="card metric"><span>Registered</span><strong>{device?.registeredAt ? new Date(device.registeredAt).toLocaleString() : "Pending"}</strong></article>
@@ -448,7 +656,7 @@ export default function App() {
       {error && <p className="error banner" role="alert">{error}</p>}
       <section className="card privacy">
         <h2>Privacy by design</h2>
-        <p>This agent records idle duration, screen-lock state, optional application executable name, and safe aggregate input counts. On this build, keyboard and mouse counts remain zero because no content-exposing hooks are installed.</p>
+        <p>This agent records idle duration, screen-lock state, optional application executable name, and aggregate keyboard and mouse activity counts. It never records typed text, key identities, mouse coordinates, or click targets.</p>
       </section>
       {policy && <section className="card privacy">
         <h2>Monitoring policy v{policy.policyVersion}</h2>

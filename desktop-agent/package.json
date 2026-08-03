@@ -1,7 +1,7 @@
 {
   "name": "fieldflow-desktop-agent",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.3.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,6 +15,9 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
     "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-autostart": "^2.0.0",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

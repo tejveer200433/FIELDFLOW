@@ -3,7 +3,10 @@ use tauri::{AppHandle, Manager, State};
 use crate::{
     database::{self, Database},
     input, logging,
-    models::{DeviceIdentity, InputActivityCounts, NewSample, PendingSample, SyncResult},
+    models::{
+        DeviceIdentity, InputActivityCounts, NewSample, PendingSample, PendingWebsiteSample,
+        SyncResult,
+    },
     platform, secure_store,
 };
 
@@ -33,6 +36,11 @@ pub fn take_input_activity_counts() -> InputActivityCounts {
 }
 
 #[tauri::command]
+pub fn set_input_collection_enabled(enabled: bool) -> Result<(), String> {
+    input::set_collection_enabled(enabled)
+}
+
+#[tauri::command]
 pub fn get_screen_locked() -> Result<bool, String> {
     platform::screen_locked()
 }
@@ -55,10 +63,17 @@ pub fn enqueue_sample(database: State<'_, Database>, sample: NewSample) -> Resul
 #[tauri::command]
 pub fn pending_samples(
     database: State<'_, Database>,
-    tracking_session_id: String,
     limit: u32,
 ) -> Result<Vec<PendingSample>, String> {
-    database::pending(&database, &tracking_session_id, limit)
+    database::pending(&database, limit)
+}
+
+#[tauri::command]
+pub fn pending_website_samples(
+    database: State<'_, Database>,
+    limit: u32,
+) -> Result<Vec<PendingWebsiteSample>, String> {
+    database::pending_websites(&database, limit)
 }
 
 #[tauri::command]
@@ -67,6 +82,14 @@ pub fn mark_samples_uploading(
     ids: Vec<String>,
 ) -> Result<(), String> {
     database::mark_uploading(&database, &ids)
+}
+
+#[tauri::command]
+pub fn mark_website_samples_uploading(
+    database: State<'_, Database>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    database::mark_websites_uploading(&database, &ids)
 }
 
 #[tauri::command]
@@ -80,8 +103,26 @@ pub fn release_samples(
 }
 
 #[tauri::command]
+pub fn release_website_samples(
+    database: State<'_, Database>,
+    ids: Vec<String>,
+    error: String,
+    retry_after_seconds: Option<i64>,
+) -> Result<(), String> {
+    database::release_websites(&database, &ids, &error, retry_after_seconds)
+}
+
+#[tauri::command]
 pub fn apply_sync_result(database: State<'_, Database>, result: SyncResult) -> Result<(), String> {
     database::apply_result(&database, &result)
+}
+
+#[tauri::command]
+pub fn apply_website_sync_result(
+    database: State<'_, Database>,
+    result: SyncResult,
+) -> Result<(), String> {
+    database::apply_website_result(&database, &result)
 }
 
 #[tauri::command]
