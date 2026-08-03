@@ -6,7 +6,7 @@ import { useState } from "react";
 import { ArrowLeft, Eye, EyeOff, ShieldCheck, Zap } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { saveIdentity } from "@/lib/authClient";
-import { legacyAccess, workspaceForAccess } from "@/lib/permissions";
+import { workspaceForAccess } from "@/lib/permissions";
 
 const allowed = ["workspace", "employee", "manager", "admin"];
 const roleCopy = { employee: ["Employee", "Field technicians · mobile-first console"], manager: ["Manager", "Coordinate teams, tasks and approvals"], admin: ["Administrator", "Workspace, access and operations control"] };
@@ -35,7 +35,8 @@ export default function AuthScreen({ role, mode }) {
         if(profileError) throw profileError;
         if(profile.approval_status!=="approved"){await supabase.auth.signOut();setMessage("Your account request was submitted and must be approved by an access administrator.");return;}
         const {data:accessData,error:accessError}=await supabase.rpc("get_my_access_context");
-        const access=accessError||!accessData?legacyAccess(profile.role):accessData;
+        if(accessError||!accessData)throw new Error("Your permissions could not be verified. Please try again.");
+        const access=accessData;
         saveIdentity({role:profile.role,email:profile.email,name:profile.full_name,id:profile.id,access}); router.push(`/${workspaceForAccess(access)}`);
       } else {
         const {data,error:authError}=await supabase.auth.signInWithPassword({email,password}); if(authError) throw authError;
@@ -43,7 +44,8 @@ export default function AuthScreen({ role, mode }) {
         if(profile.approval_status==="pending"){await supabase.auth.signOut();throw new Error("Your account is waiting for administrator approval.");}
         if(!profile.active||profile.approval_status==="rejected"){await supabase.auth.signOut();throw new Error("This account is not active. Contact your administrator.");}
         const {data:accessData,error:accessError}=await supabase.rpc("get_my_access_context");
-        const access=accessError||!accessData?legacyAccess(profile.role):accessData;
+        if(accessError||!accessData)throw new Error("Your permissions could not be verified. Please try again.");
+        const access=accessData;
         saveIdentity({role:profile.role,email:profile.email,name:profile.full_name,id:profile.id,access}); router.push(`/${workspaceForAccess(access)}`);
       }
     } catch (failure) { setError(failure.message || "Authentication failed."); } finally { setLoading(false); }

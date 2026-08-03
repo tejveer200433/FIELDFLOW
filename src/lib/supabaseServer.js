@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { hasPermission, legacyAccess } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 
 export class ApiError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
@@ -22,14 +22,15 @@ export async function requireSession(request, roles = []) {
   if (!profile.active || profile.approval_status !== "approved") throw new ApiError("This account is waiting for administrator approval.", 403);
   if (roles.length && !roles.includes(profile.role)) throw new ApiError("You do not have permission for this action.", 403);
   const { data: accessData, error: accessError } = await client.rpc("get_my_access_context");
-  const access = accessError || !accessData
-    ? legacyAccess(profile.role)
-    : {
-        isOwner: Boolean(accessData.isOwner),
-        legacyRole: accessData.legacyRole || profile.role,
-        role: accessData.role || null,
-        permissions: Array.isArray(accessData.permissions) ? accessData.permissions : []
-      };
+  if (accessError || !accessData) {
+    throw new ApiError("Your permissions could not be verified. Please try again.", 503);
+  }
+  const access = {
+    isOwner: Boolean(accessData.isOwner),
+    legacyRole: accessData.legacyRole || profile.role,
+    role: accessData.role || null,
+    permissions: Array.isArray(accessData.permissions) ? accessData.permissions : []
+  };
   return { client, user: auth.user, profile: { ...profile, access }, access };
 }
 

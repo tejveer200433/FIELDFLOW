@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { legacyAccess, workspaceForAccess } from "@/lib/permissions";
+import { workspaceForAccess } from "@/lib/permissions";
 
 export function saveIdentity({ role, email, name, id, access }) {
   localStorage.setItem("fieldflow-role", role);
@@ -35,7 +35,11 @@ export function useAuthGuard(portal) {
         return;
       }
       const { data: accessData, error: accessError } = await supabase.rpc("get_my_access_context");
-      const resolvedAccess = accessError || !accessData ? legacyAccess(profile.role) : accessData;
+      if (accessError || !accessData) {
+        router.replace(`/login/${portal}?error=permissions`);
+        return;
+      }
+      const resolvedAccess = accessData;
       const workspace = workspaceForAccess(resolvedAccess);
       if (portal !== workspace) {
         router.replace(`/${workspace}`);

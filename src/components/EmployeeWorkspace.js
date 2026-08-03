@@ -18,7 +18,7 @@ function useIdentity() {
 }
 
 function Heading({ title, subtitle, action }) { return <div className="mb-7 flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-3xl font-extrabold sm:text-4xl">{title}</h1><p className="mt-2 text-slate-500">{subtitle}</p></div>{action}</div>; }
-function Pill({ status }) { const style = status === "Approved" || status === "Completed" || status === "On time" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : status === "Rejected" || status === "Blocked" || status === "Late" ? "bg-rose-50 text-rose-700 border-rose-200" : status === "Pending" || status === "Needs Update" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-blue-50 text-blue-700 border-blue-200"; return <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${style}`}><span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />{status}</span>; }
+function Pill({ status }) { const style = status === "Approved" || status === "Completed" || status === "On time" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : status === "Rejected" || status === "Blocked" ? "bg-rose-50 text-rose-700 border-rose-200" : status === "Pending" || status === "Needs Update" || status === "Late" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-blue-50 text-blue-700 border-blue-200"; return <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${style}`}><span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />{status}</span>; }
 function Modal({ title, onClose, children }) { return <div className="fixed inset-0 z-[1000] grid place-items-center bg-slate-950/50 p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}><section className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl"><div className="flex justify-between"><h2 className="text-xl font-bold">{title}</h2><button onClick={onClose}><X /></button></div><div className="mt-5">{children}</div></section></div>; }
 
 function Home() {
@@ -30,19 +30,105 @@ function Home() {
   const [openAttendance, setOpenAttendance] = useState(null);
   const [completed, setCompleted] = useState(0);
   const [taskItems,setTaskItems]=useState([]);
+  const [greeting, setGreeting] = useState("Welcome back");
+  const [loadVersion, setLoadVersion] = useState(0);
+  const [serviceState, setServiceState] = useState({ attendance: "loading", reports: "loading", tasks: "loading" });
   const managerTasks=taskItems.map(item=>({...item,employeeId:"e-1"}));
   useEffect(() => {
-    if (hasPermission(access, PERMISSIONS.attendanceViewSelf)) apiJson("/api/attendance", { cache: "no-store" }).then(payload => setOpenAttendance(payload.data.find(item => !item.checkOut) || null)).catch(() => {});
-    if (hasPermission(access, PERMISSIONS.reportsSubmit)) apiJson("/api/reports", { cache: "no-store" }).then(payload => setCompleted(payload.data.filter(item => item.status === "Approved").length)).catch(() => {});
-    if (hasPermission(access, PERMISSIONS.tasksViewSelf)) apiJson("/api/tasks", { cache: "no-store" }).then(payload => setTaskItems(payload.data)).catch(() => {});
-  }, [access, identity.employeeId]);
+    const hour = new Date().getHours();
+    setGreeting(hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening");
+  }, []);
+  useEffect(() => {
+    let active = true;
+    const updateState = (service, status) => active && setServiceState(current => ({ ...current, [service]: status }));
+    async function loadAttendance() {
+      if (!hasPermission(access, PERMISSIONS.attendanceViewSelf)) { setOpenAttendance(null); updateState("attendance", "unavailable"); return; }
+      updateState("attendance", "loading");
+      try {
+        const payload = await apiJson("/api/attendance", { cache: "no-store" });
+        if (!Array.isArray(payload.data)) throw new Error("Attendance response is invalid.");
+        if (active) setOpenAttendance(payload.data.find(item => !item.checkOut) || null);
+        updateState("attendance", "ready");
+      } catch { if (active) setOpenAttendance(null); updateState("attendance", "error"); }
+    }
+    async function loadReports() {
+      if (!hasPermission(access, PERMISSIONS.reportsSubmit)) { setCompleted(0); updateState("reports", "unavailable"); return; }
+      updateState("reports", "loading");
+      try {
+        const payload = await apiJson("/api/reports", { cache: "no-store" });
+        if (!Array.isArray(payload.data)) throw new Error("Reports response is invalid.");
+        if (active) setCompleted(payload.data.filter(item => item.status === "Approved").length);
+        updateState("reports", "ready");
+      } catch { if (active) setCompleted(0); updateState("reports", "error"); }
+    }
+    async function loadTasks() {
+      if (!hasPermission(access, PERMISSIONS.tasksViewSelf)) { setTaskItems([]); updateState("tasks", "unavailable"); return; }
+      updateState("tasks", "loading");
+      try {
+        const payload = await apiJson("/api/tasks", { cache: "no-store" });
+        if (!Array.isArray(payload.data)) throw new Error("Tasks response is invalid.");
+        if (active) setTaskItems(payload.data);
+        updateState("tasks", "ready");
+      } catch { if (active) setTaskItems([]); updateState("tasks", "error"); }
+    }
+    loadAttendance();
+    loadReports();
+    loadTasks();
+    return () => { active = false; };
+  }, [access, loadVersion]);
+  const failedServices = Object.entries(serviceState).filter(([, status]) => status === "error").map(([service]) => service);
+  const attendanceLabel = serviceState.attendance === "loading" ? "Checking" : serviceState.attendance === "error" ? "Unavailable" : serviceState.attendance === "unavailable" ? "Not available" : openAttendance ? "On Duty" : "Offline";
+  const attendanceReady = serviceState.attendance === "ready";
   const actions = [
     ["attendance", "Check In", LocateFixed, "bg-blue-500", PERMISSIONS.attendanceViewSelf],
     ["reports", "Report", Send, "bg-emerald-500", PERMISSIONS.reportsSubmit],
     ["expenses", "Expense", WalletCards, "bg-violet-500", PERMISSIONS.expensesSubmit],
     ["sos", "SOS", AlertTriangle, "bg-rose-500", PERMISSIONS.sosCreate]
   ].filter(item => hasPermission(access, item[4]));
-  return <><section className="card p-6 sm:p-8"><div className="flex items-center justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Good morning</p><h1 className="mt-1 text-2xl font-extrabold">{identity.employee}</h1></div><div className="text-right"><p className="text-xs uppercase tracking-widest text-slate-500">Status</p><Pill status={openAttendance ? "On Duty" : "Offline"} /></div></div><div className="mt-7 grid grid-cols-3 gap-3"><div className="rounded-3xl bg-slate-50 p-5 text-center"><strong className="text-2xl text-blue-600">2</strong><p className="text-xs uppercase tracking-widest text-slate-500">Today</p></div><div className="rounded-3xl bg-slate-50 p-5 text-center"><strong className="text-2xl text-emerald-600">{completed}</strong><p className="text-xs uppercase tracking-widest text-slate-500">Approved</p></div><div className="rounded-3xl bg-slate-50 p-5 text-center"><strong className="text-2xl text-violet-600">{openAttendance ? "Live" : "—"}</strong><p className="text-xs uppercase tracking-widest text-slate-500">Tracking</p></div></div><button onClick={() => router.push("/employee/attendance")} className="btn-secondary mt-5 w-full rounded-full"><Clock3 className="h-5 w-5" />{openAttendance ? "View attendance" : "Check in to start work"}</button></section><div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">{actions.map(([slug, label, Icon, color]) => <button key={slug} onClick={() => slug === "sos" ? window.alert("SOS noted. For an immediate emergency, call 112.") : router.push(`/employee/${slug}`)} className="card flex flex-col items-center gap-3 p-5 font-bold"><span className={`grid h-12 w-12 place-items-center rounded-full text-white ${color}`}><Icon /></span>{label}</button>)}</div><div className="mt-7 flex justify-between"><h2 className="text-sm font-bold uppercase tracking-widest text-slate-500">Today's tasks</h2><button onClick={() => router.push("/employee/tasks")} className="text-sm font-bold text-blue-600">See all</button></div><div className="mt-3 space-y-3">{managerTasks.filter(task => task.employeeId === "e-1").slice(0, 2).map(task => <button onClick={() => router.push("/employee/tasks")} key={task.id} className="card flex w-full items-center gap-4 p-5 text-left"><span className="grid h-12 w-12 place-items-center rounded-full bg-blue-50 text-blue-600"><ReceiptText /></span><div><h3 className="font-bold">{task.title}</h3><p className="mt-1 text-sm text-slate-500">{task.client} · {task.address}</p><div className="mt-2"><Pill status={task.status} /></div></div><ChevronRight className="ml-auto text-slate-400" /></button>)}</div></>;
+  return <div className="space-y-6">
+    <header>
+      <p className="text-xs font-bold uppercase tracking-[0.22em] text-blue-600">Workspace overview</p>
+      <div className="mt-2 flex flex-wrap items-center gap-3"><h1 className="text-2xl font-extrabold tracking-[-0.03em] text-slate-950 sm:text-[32px]">{greeting}, {identity.employee}</h1><div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${attendanceReady && openAttendance ? "border-emerald-200 bg-emerald-50 text-emerald-700" : serviceState.attendance === "error" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-white text-slate-500"}`}><span className={`h-2 w-2 rounded-full ${attendanceReady && openAttendance ? "bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.12)]" : serviceState.attendance === "error" ? "bg-rose-500" : serviceState.attendance === "loading" ? "animate-pulse bg-blue-400" : "bg-slate-400"}`} />{attendanceLabel}</div></div>
+      <p className="mt-1.5 text-sm text-slate-500">Your workday, at a glance.</p>
+    </header>
+
+    {failedServices.length > 0 && <section role="alert" className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-950 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-bold">Some dashboard information could not be loaded.</p><p className="mt-1 text-sm text-amber-800">Unavailable: {failedServices.map(service => service.charAt(0).toUpperCase() + service.slice(1)).join(", ")}. Your existing records are unchanged.</p></div><button onClick={() => setLoadVersion(version => version + 1)} className="shrink-0 rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold transition hover:bg-amber-100 focus:outline-none focus:ring-4 focus:ring-amber-200">Retry</button></section>}
+
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(360px,0.75fr)]">
+      <section className="relative overflow-hidden rounded-[24px] bg-[#0b1220] p-6 text-white shadow-[0_20px_55px_rgba(15,23,42,0.18)] sm:p-7">
+        <div className="pointer-events-none absolute -right-16 -top-24 h-72 w-72 rounded-full bg-blue-500/20 blur-3xl" />
+        <div className="relative flex h-full min-h-[270px] flex-col">
+          <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Today</p><h2 className="mt-2 text-2xl font-bold tracking-tight">{serviceState.attendance === "loading" ? "Checking attendance…" : serviceState.attendance === "error" ? "Attendance is unavailable" : openAttendance ? "Attendance is active" : "Ready for the day?"}</h2><p className="mt-1.5 max-w-lg text-sm leading-6 text-slate-400">{serviceState.attendance === "error" ? "Open Attendance for details or retry the dashboard request." : openAttendance ? "Your current shift is open and attendance is up to date." : "Check in to begin your workday and keep your attendance status current."}</p></div><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.06] text-blue-300"><Clock3 className="h-5 w-5" /></span></div>
+          <div className="mt-5 grid grid-cols-3 divide-x divide-white/10 rounded-xl border border-white/10 bg-white/[0.04]">
+            <div className="px-4 py-4 sm:px-5"><strong className="block text-2xl font-extrabold tracking-tight">{serviceState.tasks === "loading" ? "…" : serviceState.tasks === "ready" ? taskItems.length : "—"}</strong><span className="mt-1 block text-xs text-slate-400">Assigned</span></div>
+            <div className="px-4 py-4 sm:px-5"><strong className="block text-2xl font-extrabold tracking-tight text-emerald-400">{serviceState.reports === "loading" ? "…" : serviceState.reports === "ready" ? completed : "—"}</strong><span className="mt-1 block text-xs text-slate-400">Approved</span></div>
+            <div className="px-4 py-4 sm:px-5"><strong className="block text-2xl font-extrabold tracking-tight text-blue-400">{serviceState.attendance === "loading" ? "…" : attendanceReady && openAttendance ? "Live" : "—"}</strong><span className="mt-1 block text-xs text-slate-400">Tracking</span></div>
+          </div>
+          <button onClick={() => router.push("/employee/attendance")} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-950 transition hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-blue-500/30 sm:w-fit sm:min-w-48"><Clock3 className="h-4 w-4" />{attendanceReady ? openAttendance ? "View attendance" : "Check in to start" : "Open attendance"}</button>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_14px_40px_rgba(15,23,42,0.055)]">
+        <div className="border-b border-slate-100 px-5 py-4"><p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Shortcuts</p><h2 className="mt-1 text-lg font-extrabold tracking-tight text-slate-950">Quick actions</h2></div>
+        <div className="grid grid-cols-2">
+          {actions.map(([slug, label, Icon, color]) => <button key={slug} onClick={() => slug === "sos" ? window.alert("SOS noted. For an immediate emergency, call 112.") : router.push(`/employee/${slug}`)} className="group flex min-h-[104px] flex-col items-start justify-between border-b border-slate-100 p-4 text-left odd:border-r transition hover:bg-slate-50 focus:outline-none focus:ring-4 focus:ring-inset focus:ring-blue-100">
+            <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg text-white ${color}`}><Icon className="h-4 w-4" /></span><span className="flex w-full items-center justify-between gap-2 text-sm font-bold text-slate-800">{label}<ChevronRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-600" /></span>
+          </button>)}
+        </div>
+      </section>
+    </div>
+
+    <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_14px_40px_rgba(15,23,42,0.05)]">
+      <div className="flex items-end justify-between gap-4 border-b border-slate-100 px-6 py-4"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Schedule</p><h2 className="mt-1 text-lg font-extrabold tracking-tight text-slate-950">Today's tasks</h2></div><button onClick={() => router.push("/employee/tasks")} className="text-sm font-bold text-blue-600 transition hover:text-blue-800">View all</button></div>
+      {serviceState.tasks === "loading" && <div aria-live="polite" className="grid gap-3 p-6 sm:grid-cols-2"><div className="h-24 animate-pulse rounded-2xl bg-slate-100" /><div className="h-24 animate-pulse rounded-2xl bg-slate-100" /><span className="sr-only">Loading tasks</span></div>}
+      {serviceState.tasks === "error" && <div className="flex flex-col items-start gap-3 px-6 py-7 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-bold text-slate-900">Tasks could not be loaded.</p><p className="mt-1 text-sm text-slate-500">Your existing tasks have not been changed.</p></div><button onClick={() => setLoadVersion(version => version + 1)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50">Retry</button></div>}
+      {serviceState.tasks === "unavailable" && <div className="px-6 py-7 text-sm text-slate-500">Tasks are not available for your current role.</div>}
+      {serviceState.tasks === "ready" && managerTasks.length === 0 && <div className="px-6 py-7"><p className="font-bold text-slate-900">No tasks assigned.</p><p className="mt-1 text-sm text-slate-500">New assigned work will appear here.</p></div>}
+      {serviceState.tasks === "ready" && managerTasks.length > 0 && <div className="divide-y divide-slate-100">{managerTasks.filter(task => task.employeeId === "e-1").slice(0, 2).map((task, index) => <button onClick={() => router.push("/employee/tasks")} key={task.id} className="group flex w-full items-center gap-4 px-6 py-4 text-left transition hover:bg-slate-50 focus:outline-none focus:ring-4 focus:ring-inset focus:ring-blue-100">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700"><ReceiptText className="h-5 w-5" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-bold uppercase tracking-widest text-slate-400">Task {String(index + 1).padStart(2, "0")}</span><Pill status={task.status} /></div><h3 className="mt-2 truncate font-bold text-slate-950">{task.title}</h3><p className="mt-1 truncate text-sm text-slate-500">{task.client} · {task.address}</p></div><ChevronRight className="h-5 w-5 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-600" />
+      </button>)}</div>}
+    </section>
+  </div>;
 }
 
 function LegacyAttendance() {

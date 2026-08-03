@@ -155,6 +155,10 @@ export default function EmployeeActivityPage() {
     () => activity?.dailySummaries?.find(item => item.date === todayUtc()) || null,
     [activity]
   );
+  const rangeTrackedSeconds = useMemo(
+    () => (activity?.dailySummaries || []).reduce((total, item) => total + (Number(item.trackedSeconds) || 0), 0),
+    [activity]
+  );
   const heartbeat = activity?.recentHeartbeat || null;
   const monitoringStatus = deriveMonitoringStatus({ policy, sessionInfo, devices, heartbeat, error });
 
@@ -181,7 +185,7 @@ export default function EmployeeActivityPage() {
     <ActivityDeviceList devices={devices} heartbeat={heartbeat} heartbeatIntervalSeconds={policy?.heartbeatIntervalSeconds} />
     <div className="grid gap-6 xl:grid-cols-2">
       <ActivityTimeline sessions={activity?.timeline || []} rangeDays={rangeDays} onRangeChange={setRangeDays} />
-      <ApplicationUsageSummary enabled={Boolean(policy?.collectApplicationNames)} usage={activity?.applicationUsage || []} sampleIntervalSeconds={policy?.sampleIntervalSeconds} trackedSeconds={todaySummary?.trackedSeconds || 0} />
+      <ApplicationUsageSummary enabled={Boolean(policy?.collectApplicationNames)} usage={activity?.applicationUsage || []} sampleIntervalSeconds={policy?.sampleIntervalSeconds} trackedSeconds={rangeTrackedSeconds} />
     </div>
     <WebsiteUsageSummary usage={activity?.websiteUsage || []} />
     <section className="card p-5 text-sm text-slate-600">

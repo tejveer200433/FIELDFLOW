@@ -63,8 +63,13 @@ export async function GET(request, { params }) {
     if (failure) throw failure.error;
 
     const sessions = sessionsResult.data || [];
-    const heartbeat = heartbeatsResult.data?.[0] || null;
     const currentSession = activeSessionResult.data || null;
+    const heartbeat = currentSession
+      ? (heartbeatsResult.data || []).find(item =>
+          item.tracking_session_id === currentSession.id
+          && item.device_id === currentSession.device_id
+        ) || null
+      : heartbeatsResult.data?.[0] || null;
     const applicationCounts = new Map();
     const websiteCounts = new Map();
     for (const sample of websitesResult.data || []) {

@@ -13,6 +13,15 @@ function firstByEmployee(rows) {
   return map;
 }
 
+function firstMatchingSession(rows, employeeId, activeSession) {
+  if (!activeSession) return null;
+  return (rows || []).find(row =>
+    row.employee_id === employeeId
+    && row.tracking_session_id === activeSession.id
+    && (!row.device_id || row.device_id === activeSession.device_id)
+  ) || null;
+}
+
 export async function GET(request) {
   try {
     const session = await requireActivitySession(request, [
@@ -55,14 +64,14 @@ export async function GET(request) {
 
     const devices = firstByEmployee(devicesResult.data);
     const sessions = firstByEmployee(sessionsResult.data);
-    const heartbeats = firstByEmployee(heartbeatsResult.data);
     const summaries = new Map((summariesResult.data || []).map(row => [row.employee_id, row]));
-    const samples = firstByEmployee(samplesResult.data);
     let rows = profiles.map(profile => {
-      const device = devices.get(profile.employeeId);
       const activeSession = sessions.get(profile.employeeId);
-      const heartbeat = heartbeats.get(profile.employeeId);
-      const sample = samples.get(profile.employeeId);
+      const device = activeSession
+        ? (devicesResult.data || []).find(item => item.id === activeSession.device_id) || null
+        : devices.get(profile.employeeId);
+      const heartbeat = firstMatchingSession(heartbeatsResult.data, profile.employeeId, activeSession);
+      const sample = firstMatchingSession(samplesResult.data, profile.employeeId, activeSession);
       const summary = summaries.get(profile.employeeId);
       return {
         employeeId: profile.employeeId,

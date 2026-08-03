@@ -21,7 +21,7 @@ export async function POST(request) {
     const body = parseSampleBatch(await readActivityJson(request));
     const [device, trackingSession, policy] = await Promise.all([
       requireOwnedDevice(session.client, session.profile.id, body.deviceId, { active: true }),
-      requireOwnedSession(session.client, session.profile.id, body.trackingSessionId, { active: true }),
+      requireOwnedSession(session.client, session.profile.id, body.trackingSessionId),
       getActivePolicy(session.client)
     ]);
     if (trackingSession.device_id !== device.id) {

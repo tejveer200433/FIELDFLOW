@@ -24,6 +24,18 @@ const throughput = Array.from({ length: 14 }, (_, index) => ({ day: `D${index + 
 const performance = managerEmployees.map(employee => ({ name: employee.name.split(" ")[0], value: employee.performance }));
 const taskMix = [{ name: "Installation", value: 42, color: "#3b82f6" }, { name: "Maintenance", value: 28, color: "#10b981" }, { name: "Audit", value: 18, color: "#8b5cf6" }, { name: "Repair", value: 12, color: "#f59e0b" }];
 const columns = ["Assigned", "On The Way", "In Progress", "Completed", "Blocked"];
+const workspaceTimeZone = "Asia/Kolkata";
+
+function localDayKey(value = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: workspaceTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date(value));
+  const part = type => parts.find(item => item.type === type)?.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
 
 function PageHeading({ title, subtitle, action }) {
   return <div className="mb-7 flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">{title}</h1><p className="mt-1 text-base text-slate-500">{subtitle}</p></div>{action}</div>;
@@ -59,34 +71,50 @@ function Metric({ label, value, icon: Icon, tone, trend }) {
 function Dashboard({ access }) {
   const router = useRouter();
   const [snapshot,setSnapshot]=useState({tasks:[],attendance:[],employees:[],sos:[]});
+  const [serviceState,setServiceState]=useState({tasks:"loading",attendance:"loading",employees:"loading",sos:"loading"});
+  const [loadVersion,setLoadVersion]=useState(0);
   useEffect(() => {
-    const allowed = (permissions, endpoint) => hasAnyPermission(access, permissions)
-      ? apiJson(endpoint).catch(() => ({ data: [] }))
-      : Promise.resolve({ data: [] });
+    let active = true;
+    const allowed = async (service, permissions, endpoint) => {
+      if (!hasAnyPermission(access, permissions)) return { service, status: "unavailable", data: [] };
+      try {
+        const payload = await apiJson(endpoint, { cache: "no-store" });
+        if (!Array.isArray(payload.data)) throw new Error("Invalid service response");
+        return { service, status: "ready", data: payload.data };
+      } catch {
+        return { service, status: "error", data: [] };
+      }
+    };
     Promise.all([
-      allowed([PERMISSIONS.tasksAssign, PERMISSIONS.tasksManageAll], "/api/tasks"),
-      allowed([PERMISSIONS.attendanceViewTeam, PERMISSIONS.attendanceViewAll], "/api/attendance"),
-      allowed([PERMISSIONS.employeesViewAll, PERMISSIONS.tasksAssign], "/api/employees"),
-      allowed([PERMISSIONS.sosViewTeam], "/api/sos")
-    ]).then(([tasksResult, attendanceResult, employeesResult, sosResult]) => setSnapshot({
-      tasks: tasksResult.data,
-      attendance: attendanceResult.data,
-      employees: employeesResult.data,
-      sos: sosResult.data
-    }));
-  }, [access]);
+      allowed("tasks", [PERMISSIONS.tasksAssign, PERMISSIONS.tasksManageAll], "/api/tasks"),
+      allowed("attendance", [PERMISSIONS.attendanceViewTeam, PERMISSIONS.attendanceViewAll], "/api/attendance"),
+      allowed("employees", [PERMISSIONS.employeesViewAll, PERMISSIONS.tasksAssign], "/api/employees"),
+      allowed("sos", [PERMISSIONS.sosViewTeam], "/api/sos")
+    ]).then(results => {
+      if (!active) return;
+      setSnapshot(Object.fromEntries(results.map(result => [result.service, result.data])));
+      setServiceState(Object.fromEntries(results.map(result => [result.service, result.status])));
+    });
+    return () => { active = false; };
+  }, [access, loadVersion]);
   const managerTasks=[...snapshot.sos.map(alert=>({id:alert.id,title:`SOS · ${alert.employee}`,employee:alert.employee,client:alert.message,address:`${alert.latitude}, ${alert.longitude}`,priority:"Urgent",status:"Blocked",updatedAt:alert.createdAt})),...snapshot.tasks];
   const onDuty=new Set(snapshot.attendance.filter(item=>!item.checkOut).map(item=>item.employeeId)).size;
-  const hours=Array.from(snapshot.attendance.reduce((groups,item)=>{if(item.date===new Date().toISOString().slice(0,10)){const current=groups.get(item.employee)||0;groups.set(item.employee,current+(item.durationSeconds||0)/3600);}return groups;},new Map()),([name,value])=>({name:name.split(" ")[0],value:Number(value.toFixed(2))}));
-  const weekly=Array.from({length:7},(_,offset)=>{const date=new Date();date.setDate(date.getDate()-(6-offset));const key=date.toISOString().slice(0,10);return{day:date.toLocaleDateString("en",{weekday:"short"}),tasks:managerTasks.filter(item=>item.status==="Completed"&&item.updatedAt?.slice(0,10)===key).length};});
+  const hours=serviceState.attendance==="ready"?Array.from(snapshot.attendance.reduce((groups,item)=>{if(item.date===localDayKey()){const current=groups.get(item.employee)||0;groups.set(item.employee,current+(item.durationSeconds||0)/3600);}return groups;},new Map()),([name,value])=>({name:name.split(" ")[0],value:Number(value.toFixed(2))})):[];
+  const weekly=serviceState.tasks==="ready"?Array.from({length:7},(_,offset)=>{const date=new Date();date.setDate(date.getDate()-(6-offset));const key=localDayKey(date);return{day:date.toLocaleDateString("en",{weekday:"short",timeZone:workspaceTimeZone}),tasks:snapshot.tasks.filter(item=>item.status==="Completed"&&item.updatedAt&&localDayKey(item.updatedAt)===key).length};}):[];
   const activity=managerTasks.slice(0,5).map(item=>({person:item.employee,action:`is ${item.status.toLowerCase()}`,detail:item.title,time:item.updatedAt?new Date(item.updatedAt).toLocaleString():"Recently",color:item.status==="Blocked"?"bg-rose-500":item.status==="Completed"?"bg-emerald-500":"bg-blue-500"}));
+  const failedServices=Object.entries(serviceState).filter(([,status])=>status==="error").map(([service])=>service);
+  const attendanceReady=serviceState.attendance==="ready";
+  const employeesReady=serviceState.employees==="ready";
+  const tasksReady=serviceState.tasks==="ready";
+  const sosReady=serviceState.sos==="ready";
   return <>
     <PageHeading title="Operations dashboard" subtitle="Live pulse of your field team." />
+    {failedServices.length>0&&<div role="alert" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><span><strong>Some services could not be loaded:</strong> {failedServices.join(", ")}. Unavailable totals are shown as dashes.</span><button onClick={()=>setLoadVersion(version=>version+1)} className="rounded-full border border-rose-300 bg-white px-4 py-2 font-bold text-rose-700">Retry</button></div>}
     <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-      <Metric label="On duty" value={`${onDuty} / ${snapshot.employees.length}`} icon={UsersRound} tone="bg-teal-50 text-teal-600" />
-      <Metric label="In progress" value={managerTasks.filter(item=>item.status==="In Progress").length} icon={ClipboardList} tone="bg-blue-50 text-blue-600" />
-      <Metric label="Completed" value={managerTasks.filter(item=>item.status==="Completed").length} icon={CheckCircle2} tone="bg-emerald-50 text-emerald-600" />
-      <Metric label="Blocked" value={managerTasks.filter(item=>item.status==="Blocked").length} icon={AlertTriangle} tone="bg-rose-50 text-rose-600" />
+      <Metric label="On duty" value={attendanceReady&&employeesReady?`${onDuty} / ${snapshot.employees.length}`:"—"} icon={UsersRound} tone="bg-teal-50 text-teal-600" />
+      <Metric label="In progress" value={tasksReady?managerTasks.filter(item=>item.status==="In Progress").length:"—"} icon={ClipboardList} tone="bg-blue-50 text-blue-600" />
+      <Metric label="Completed" value={tasksReady?managerTasks.filter(item=>item.status==="Completed").length:"—"} icon={CheckCircle2} tone="bg-emerald-50 text-emerald-600" />
+      <Metric label="Blocked" value={tasksReady&&sosReady?managerTasks.filter(item=>item.status==="Blocked").length:"—"} icon={AlertTriangle} tone="bg-rose-50 text-rose-600" />
     </div>
     <div className="mt-7 grid gap-7 xl:grid-cols-[2fr_1fr]">
       <div className="card p-6"><div className="flex items-start justify-between"><div><h2 className="font-bold">Weekly task completion</h2><p className="text-sm text-slate-500">Tasks closed by day</p></div><Pill tone="green">Trending up</Pill></div><div className="mt-5 h-72"><ResponsiveContainer width="100%" height="100%"><LineChart data={weekly}><CartesianGrid stroke="#e8edf5" vertical={false} /><XAxis dataKey="day" tickLine={false} axisLine={false} /><YAxis tickLine={false} axisLine={false} /><Tooltip /><Line type="monotone" dataKey="tasks" stroke="#2563eb" strokeWidth={3} dot={{ r: 4, fill: "white", strokeWidth: 3 }} /></LineChart></ResponsiveContainer></div></div>
