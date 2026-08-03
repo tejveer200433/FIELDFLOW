@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "FieldFlow Website Activity",
+  "version": "0.3.0",
+  "description": "Reports active website domains to FieldFlow during an employee-started tracking session.",
+  "incognito": "not_allowed",
+  "permissions": ["alarms", "storage", "tabs"],
+  "host_permissions": ["http://127.0.0.1:38473/*"],
+  "background": {
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "website-activity@fieldflow.local",
+      "strict_min_version": "121.0",
+      "data_collection_permissions": {
+        "required": ["websiteActivity"]
+      }
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "FieldFlow Website Activity",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  }
+}

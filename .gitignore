@@ -21,5 +21,8 @@ pnpm-debug.log*
 Thumbs.db
 *.tsbuildinfo
 
+# Generated browser-store upload packages
+browser-extension-dist/
+
 # Nested desktop-agent native build output
 desktop-agent/src-tauri/target/

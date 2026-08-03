@@ -14,6 +14,9 @@ export default function Home() {
         <Link href="/login/workspace" className="group card p-6 transition hover:-translate-y-1 hover:shadow-xl"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-600 text-white"><LogIn /></span><h2 className="mt-6 text-xl font-bold">Sign in</h2><p className="mt-2 text-sm leading-6 text-slate-500">Use your work credentials. Your assigned permissions determine the workspace you enter.</p><span className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-blue-600">Continue<ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" /></span></Link>
         <Link href="/signup/workspace" className="group card p-6 transition hover:-translate-y-1 hover:shadow-xl"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-600 text-white"><UserPlus /></span><h2 className="mt-6 text-xl font-bold">Request an account</h2><p className="mt-2 text-sm leading-6 text-slate-500">Create an account, then an Owner can assign your company-specific role and team.</p><span className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-blue-600">Create account<ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" /></span></Link>
       </section>
+      <footer className="py-6 text-center text-sm text-slate-500">
+        <Link href="/privacy/website-activity" className="font-semibold text-blue-600 hover:text-blue-800">Website Activity Privacy Notice</Link>
+      </footer>
     </div>
   </main>;
 }
