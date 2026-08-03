@@ -1,13 +1,15 @@
-/* global chrome */
 import { CONFIG } from "./config.js";
+import { detectBrowserName } from "./browser-detection.mjs";
 
+const extensionApi = globalThis.browser ?? globalThis.chrome;
 const STATUS_KEY = "fieldflowWebsiteStatus";
 const SAMPLE_ALARM = "fieldflow-domain-sample";
 let browserChangeTimer;
 let lastQueuedDomain = null;
+let detectedBrowserName;
 
 async function setStatus(state, message, domain = null) {
-  await chrome.storage.local.set({
+  await extensionApi.storage.local.set({
     [STATUS_KEY]: { state, message, domain, checkedAt: new Date().toISOString() }
   });
 }
@@ -23,10 +25,11 @@ function hostnameOnly(value) {
 }
 
 async function sendToAgent(domain, durationSeconds) {
+  detectedBrowserName ||= await detectBrowserName();
   const response = await fetch(`${CONFIG.bridgeUrl}/v1/domain`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ domain, browserName: CONFIG.browserName, durationSeconds })
+    body: JSON.stringify({ domain, browserName: detectedBrowserName, durationSeconds })
   });
   const result = await response.json().catch(() => ({}));
   if (response.status === 409 || result.state === "not-tracking") {
@@ -44,7 +47,7 @@ async function sendToAgent(domain, durationSeconds) {
 
 async function sampleActiveWebsite({ durationSeconds = CONFIG.sampleSeconds, requireDomainChange = false } = {}) {
   try {
-    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const [tab] = await extensionApi.tabs.query({ active: true, lastFocusedWindow: true });
     if (!tab) return setStatus("no-tab", "No active browser tab was found.");
     if (tab.incognito) return setStatus("private-tab", "Private tabs are never collected.");
     const domain = hostnameOnly(tab.url);
@@ -60,9 +63,9 @@ async function sampleActiveWebsite({ durationSeconds = CONFIG.sampleSeconds, req
 }
 
 async function ensureSamplingAlarm() {
-  const existing = await chrome.alarms.get(SAMPLE_ALARM);
+  const existing = await extensionApi.alarms.get(SAMPLE_ALARM);
   if (!existing) {
-    await chrome.alarms.create(SAMPLE_ALARM, { delayInMinutes: 1, periodInMinutes: 1 });
+    await extensionApi.alarms.create(SAMPLE_ALARM, { delayInMinutes: 1, periodInMinutes: 1 });
   }
 }
 
@@ -74,26 +77,21 @@ function sampleAfterBrowserChange() {
 }
 
 ensureSamplingAlarm().catch(() => {});
-chrome.runtime.onInstalled.addListener(() => {
+extensionApi.runtime.onInstalled.addListener(() => {
   ensureSamplingAlarm().catch(() => {});
   sampleAfterBrowserChange();
 });
-chrome.runtime.onStartup.addListener(() => {
+extensionApi.runtime.onStartup.addListener(() => {
   ensureSamplingAlarm().catch(() => {});
   sampleAfterBrowserChange();
 });
-chrome.alarms.onAlarm.addListener(alarm => {
+extensionApi.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === SAMPLE_ALARM) sampleActiveWebsite().catch(() => {});
 });
-chrome.tabs.onActivated.addListener(sampleAfterBrowserChange);
-chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+extensionApi.tabs.onActivated.addListener(sampleAfterBrowserChange);
+extensionApi.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
   if (tab.active && (changeInfo.url || changeInfo.status === "complete")) sampleAfterBrowserChange();
 });
-chrome.windows.onFocusChanged.addListener(windowId => {
-  if (windowId !== chrome.windows.WINDOW_ID_NONE) sampleAfterBrowserChange();
-});
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type !== "fieldflow-check-now") return false;
-  sampleActiveWebsite({ durationSeconds: 1 }).then(sendResponse);
-  return true;
+extensionApi.windows.onFocusChanged.addListener(windowId => {
+  if (windowId !== extensionApi.windows.WINDOW_ID_NONE) sampleAfterBrowserChange();
 });

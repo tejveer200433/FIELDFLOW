@@ -1,6 +1,6 @@
-/* global chrome */
 import { CONFIG } from "./config.js";
 
+const extensionApi = globalThis.browser ?? globalThis.chrome;
 const STATUS_KEY = "fieldflowWebsiteStatus";
 const status = document.querySelector("#status");
 const connection = document.querySelector("#connection");
@@ -10,23 +10,18 @@ async function render() {
     const response = await fetch(`${CONFIG.bridgeUrl}/v1/status`);
     const result = await response.json();
     connection.textContent = result.tracking
-      ? "Desktop agent connected · Tracking active"
-      : "Desktop agent connected · Tracking not active";
+      ? "Desktop agent connected - tracking active"
+      : "Desktop agent connected - tracking not active";
   } catch {
     connection.textContent = "Desktop agent not connected";
   }
-  const latest = (await chrome.storage.local.get(STATUS_KEY))[STATUS_KEY];
+  const latest = (await extensionApi.storage.local.get(STATUS_KEY))[STATUS_KEY];
   status.textContent = latest
-    ? `${latest.message} Last checked ${new Date(latest.checkedAt).toLocaleTimeString()}.`
-    : "No website checked yet.";
+    ? `${latest.message} Last automatic check ${new Date(latest.checkedAt).toLocaleTimeString()}.`
+    : "Waiting for the first automatic website sample.";
 }
 
-document.querySelector("#check-now").addEventListener("click", async () => {
-  status.textContent = "Checking the active tab…";
-  await chrome.runtime.sendMessage({ type: "fieldflow-check-now" });
-  await render();
-});
-chrome.storage.onChanged.addListener((_changes, area) => {
+extensionApi.storage.onChanged.addListener((_changes, area) => {
   if (area === "local") render();
 });
 render();
