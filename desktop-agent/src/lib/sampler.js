@@ -51,3 +51,33 @@ export async function captureSample(
   await invokeCommand("enqueue_sample", { sample });
   return sample;
 }
+
+export function buildCodingSample({ localSampleId, sessionId, capturedAt, context, durationSeconds = 60 }) {
+  return {
+    localSampleId,
+    trackingSessionId: sessionId,
+    capturedAt,
+    ideName: context.ideName,
+    projectName: context.projectName,
+    durationSeconds
+  };
+}
+
+export async function captureCodingSample(
+  { sessionId, collectCodingProjectNames },
+  invokeCommand = invoke,
+  shouldEnqueue = () => true
+) {
+  if (!collectCodingProjectNames) return null;
+  const context = await invokeCommand("get_coding_context");
+  if (!context) return null;
+  const sample = buildCodingSample({
+    localSampleId: crypto.randomUUID(),
+    sessionId,
+    capturedAt: new Date().toISOString(),
+    context
+  });
+  if (!shouldEnqueue()) return null;
+  await invokeCommand("enqueue_coding_sample", { sample });
+  return sample;
+}

@@ -71,6 +71,17 @@ export function getMyActivity(employeeId, { startDate, endDate, limit = 50 } = {
   return activityRequest(`/employees/${encodeURIComponent(employeeId)}?${query}`).then(payload => payload.data);
 }
 
+export function getBlocklistRequests() {
+  return activityRequest("/blocklist-requests").then(payload => payload.data.requests);
+}
+
+export function createBlocklistRequest({ domain, reason, requestedMinutes = 30 }) {
+  return activityRequest("/blocklist-requests", {
+    method: "POST",
+    body: JSON.stringify({ domain, reason, requestedMinutes })
+  });
+}
+
 export function visibleAcknowledgementText(policy) {
   return [
     `I acknowledge FieldFlow monitoring policy version ${policy.policyVersion}.`,

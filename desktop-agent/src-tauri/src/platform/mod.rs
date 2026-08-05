@@ -2,7 +2,9 @@
 mod windows;
 
 #[cfg(windows)]
-pub use windows::{active_application, device_identity, idle_seconds, screen_locked};
+pub use windows::{
+    active_application, active_coding_context, device_identity, idle_seconds, screen_locked,
+};
 
 #[cfg(not(windows))]
 pub fn idle_seconds() -> Result<u64, String> {
@@ -16,6 +18,11 @@ pub fn screen_locked() -> Result<bool, String> {
 
 #[cfg(not(windows))]
 pub fn active_application() -> Result<Option<String>, String> {
+    Err("The FIELD-FLOW desktop agent currently supports Windows only.".to_string())
+}
+
+#[cfg(not(windows))]
+pub fn active_coding_context() -> Result<Option<crate::models::CodingContext>, String> {
     Err("The FIELD-FLOW desktop agent currently supports Windows only.".to_string())
 }
 

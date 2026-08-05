@@ -37,7 +37,10 @@ export async function POST(request) {
       p_heartbeat_interval_seconds: body.heartbeatIntervalSeconds,
       p_collect_application_names: body.collectApplicationNames,
       p_require_acknowledgement: body.requireAcknowledgement,
-      p_retention_days: body.retentionDays
+      p_retention_days: body.retentionDays,
+      p_website_blocking_enabled: body.websiteBlockingEnabled,
+      p_blocked_domains: body.blockedDomains,
+      p_collect_coding_project_names: body.collectCodingProjectNames
     });
     if (error) throwActivityDatabaseError(error);
     return activitySuccess(mapPolicy(rpcRow(data)), { status: 201, message: "A new monitoring policy version is active." });

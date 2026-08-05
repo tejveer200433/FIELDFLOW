@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { enable as enableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
 import { createFieldFlowAuth, verifyEmployeeAccess } from "./lib/auth";
 import { createActivityApi } from "./lib/api";
-import { captureSample } from "./lib/sampler";
+import { captureCodingSample, captureSample } from "./lib/sampler";
 import { isHeartbeatRateLimit, shouldSendHeartbeat } from "./lib/heartbeat";
 import { decideStartupTracking, reconcileTrackingSession } from "./lib/lifecycle";
 import { policyAcknowledgementText, sha256Hex } from "./lib/policy";
@@ -170,6 +170,13 @@ export default function App() {
       });
       setLastHeartbeat(new Date());
       setError(current => current.startsWith("Heartbeat delayed:") ? "" : current);
+      await invoke("set_agent_state", {
+        key: "blocklist_json",
+        value: JSON.stringify({
+          blockedDomains: result.websiteBlockingEnabled ? (result.blockedDomains || []) : [],
+          overrides: result.activeOverrides || []
+        })
+      }).catch(() => null);
       return result;
     } catch (heartbeatError) {
       if (isHeartbeatRateLimit(heartbeatError)) {
@@ -502,6 +509,10 @@ export default function App() {
             sessionId: session.sessionId,
             collectApplicationNames: policy.collectApplicationNames
           }, undefined, () => trackingSessionId.current === session.sessionId);
+          await captureCodingSample({
+            sessionId: session.sessionId,
+            collectCodingProjectNames: policy.collectCodingProjectNames
+          }, undefined, () => trackingSessionId.current === session.sessionId).catch(() => null);
           if (!sample) return;
           setLastSample(new Date(sample.capturedAt));
           setCurrentApplication(sample.activeApplication);

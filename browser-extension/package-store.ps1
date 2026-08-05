@@ -1,5 +1,5 @@
 param(
-  [string]$IconSource = "C:\Users\HP\Downloads\desktop-agent\src-tauri\icons\icon.png"
+  [string]$IconSource
 )
 
 $ErrorActionPreference = "Stop"
@@ -7,12 +7,17 @@ $extensionRoot = $PSScriptRoot
 $repoRoot = Split-Path $extensionRoot -Parent
 $outputRoot = Join-Path $repoRoot "browser-extension-dist"
 $version = "0.3.0"
+if (-not $IconSource) {
+  $IconSource = Join-Path $repoRoot "desktop-agent\src-tauri\icons\icon.png"
+}
 $commonFiles = @(
   "background.js",
   "browser-detection.mjs",
   "config.js",
   "popup.html",
   "popup.js",
+  "blocked.html",
+  "blocked.js",
   "PRIVACY.md"
 )
 

@@ -4,12 +4,15 @@
   "version": "0.3.0",
   "description": "Reports active website domains to FieldFlow during an employee-started tracking session.",
   "incognito": "not_allowed",
-  "permissions": ["alarms", "storage", "tabs"],
+  "permissions": ["alarms", "storage", "tabs", "declarativeNetRequest"],
   "host_permissions": ["http://127.0.0.1:38473/*"],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
+  "web_accessible_resources": [
+    { "resources": ["blocked.html", "blocked.js"], "matches": ["<all_urls>"] }
+  ],
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",

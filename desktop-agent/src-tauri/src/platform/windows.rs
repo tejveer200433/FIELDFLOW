@@ -20,12 +20,12 @@ use windows::{
         },
         UI::{
             Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO},
-            WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId},
+            WindowsAndMessaging::{GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId},
         },
     },
 };
 
-use crate::models::DeviceIdentity;
+use crate::models::{CodingContext, DeviceIdentity};
 
 pub fn elapsed_ticks(now: u32, last: u32) -> u32 {
     now.wrapping_sub(last)
@@ -116,6 +116,126 @@ pub fn active_application() -> Result<Option<String>, String> {
     }
 }
 
+/// Only these four IDEs are recognized; extending this list later is a one-line addition.
+fn ide_label_for_process(process: &str) -> Option<&'static str> {
+    match process {
+        "Code" | "Code - Insiders" => Some("vscode"),
+        "Cursor" => Some("cursor"),
+        "idea64" | "idea" => Some("intellij"),
+        "eclipse" => Some("eclipse"),
+        _ => None,
+    }
+}
+
+fn sanitize_project_name(value: &str) -> Option<String> {
+    let sanitized: String = value
+        .trim()
+        .chars()
+        .filter(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, ' ' | '-' | '_' | '.')
+        })
+        .take(160)
+        .collect();
+    let sanitized = sanitized.trim().to_string();
+    (!sanitized.is_empty()).then_some(sanitized)
+}
+
+const CODE_LIKE_SUFFIXES: [&str; 3] = [
+    " - Visual Studio Code - Insiders",
+    " - Visual Studio Code",
+    " - Cursor",
+];
+
+/// VS Code / Cursor titles look like "file.js - myproject - Visual Studio Code" (or just
+/// "myproject - Visual Studio Code" with no file open). Strip the known product suffix,
+/// then take the last " - "-separated segment -- this is the project/workspace name
+/// regardless of whether a file name precedes it.
+fn parse_vscode_like_project(title: &str) -> Option<String> {
+    let remainder = CODE_LIKE_SUFFIXES
+        .iter()
+        .find_map(|suffix| title.strip_suffix(suffix))?;
+    let project = remainder.rsplit(" - ").next().unwrap_or(remainder);
+    sanitize_project_name(project)
+}
+
+/// IntelliJ titles look like "myproject – [module] – file.java – IntelliJ IDEA 2024.1"
+/// (an en dash, not a hyphen, in most versions). The project name is the first segment.
+fn parse_intellij_project(title: &str) -> Option<String> {
+    let normalized = title.replace('\u{2013}', "-");
+    let parts: Vec<&str> = normalized.split(" - ").collect();
+    if parts.len() < 2 || !parts.last()?.contains("IntelliJ") {
+        return None;
+    }
+    sanitize_project_name(parts[0])
+}
+
+/// Eclipse titles are the least consistent (often a resource path, e.g.
+/// "file.java - myproject/src/main - Eclipse IDE"). Best-effort only: take the middle
+/// segment when a resource path is present, then its first path component.
+fn parse_eclipse_project(title: &str) -> Option<String> {
+    let parts: Vec<&str> = title.split(" - ").collect();
+    let candidate = match parts.len() {
+        0 | 1 => return None,
+        2 => parts[0],
+        _ => parts[1],
+    };
+    let project = candidate.split(['/', '\\']).next()?;
+    sanitize_project_name(project)
+}
+
+fn project_name_from_title(ide_label: &str, title: &str) -> Option<String> {
+    match ide_label {
+        "vscode" | "cursor" => parse_vscode_like_project(title),
+        "intellij" => parse_intellij_project(title),
+        "eclipse" => parse_eclipse_project(title),
+        _ => None,
+    }
+}
+
+fn window_title(window: windows::Win32::Foundation::HWND) -> Option<String> {
+    let mut buffer = [0u16; 512];
+    let length = unsafe { GetWindowTextW(window, &mut buffer) };
+    if length <= 0 {
+        return None;
+    }
+    Some(String::from_utf16_lossy(&buffer[..length as usize]))
+}
+
+/// Reports which recognized IDE is focused and, best-effort, which project/workspace is
+/// open. The raw window title is read only inside this function and immediately parsed
+/// down to a short sanitized project label -- it never leaves this function, matching the
+/// existing privacy boundary around `active_application()` (no window titles, file names,
+/// or paths are ever stored or uploaded).
+pub fn active_coding_context() -> Result<Option<CodingContext>, String> {
+    unsafe {
+        let window = GetForegroundWindow();
+        if window.0.is_null() {
+            return Ok(None);
+        }
+        let mut process_id = 0;
+        GetWindowThreadProcessId(window, Some(&mut process_id));
+        if process_id == 0 {
+            return Ok(None);
+        }
+        let Some(process) = process_name(process_id)? else {
+            return Ok(None);
+        };
+        let Some(ide_label) = ide_label_for_process(&process) else {
+            return Ok(None);
+        };
+        let Some(title) = window_title(window) else {
+            return Ok(None);
+        };
+        let Some(project_name) = project_name_from_title(ide_label, &title) else {
+            return Ok(None);
+        };
+        Ok(Some(CodingContext {
+            ide_name: ide_label.to_string(),
+            project_name,
+        }))
+    }
+}
+
 fn read_registry_string(root: HKEY, path: &str, name: &str) -> Result<String, String> {
     let path: Vec<u16> = path.encode_utf16().chain(Some(0)).collect();
     let name: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
@@ -196,11 +316,73 @@ pub fn device_identity() -> Result<DeviceIdentity, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{elapsed_ticks, sanitize_application_name};
+    use super::{
+        elapsed_ticks, ide_label_for_process, parse_eclipse_project, parse_intellij_project,
+        parse_vscode_like_project, sanitize_application_name,
+    };
 
     #[test]
     fn elapsed_ticks_handles_windows_counter_wraparound() {
         assert_eq!(elapsed_ticks(20, u32::MAX - 9), 30);
+    }
+
+    #[test]
+    fn ide_is_recognized_only_for_the_four_supported_editors() {
+        assert_eq!(ide_label_for_process("Code"), Some("vscode"));
+        assert_eq!(ide_label_for_process("Code - Insiders"), Some("vscode"));
+        assert_eq!(ide_label_for_process("Cursor"), Some("cursor"));
+        assert_eq!(ide_label_for_process("idea64"), Some("intellij"));
+        assert_eq!(ide_label_for_process("idea"), Some("intellij"));
+        assert_eq!(ide_label_for_process("eclipse"), Some("eclipse"));
+        assert_eq!(ide_label_for_process("notepad"), None);
+    }
+
+    #[test]
+    fn vscode_project_is_the_segment_before_the_product_suffix() {
+        assert_eq!(
+            parse_vscode_like_project("app.js - fieldflow-nextjs - Visual Studio Code").as_deref(),
+            Some("fieldflow-nextjs")
+        );
+        assert_eq!(
+            parse_vscode_like_project("fieldflow-nextjs - Visual Studio Code").as_deref(),
+            Some("fieldflow-nextjs")
+        );
+        assert_eq!(
+            parse_vscode_like_project("main.rs - agent - Cursor").as_deref(),
+            Some("agent")
+        );
+        assert_eq!(
+            parse_vscode_like_project("proj - Visual Studio Code - Insiders").as_deref(),
+            Some("proj")
+        );
+        assert_eq!(parse_vscode_like_project("Untitled-1"), None);
+    }
+
+    #[test]
+    fn intellij_project_is_the_first_segment() {
+        assert_eq!(
+            parse_intellij_project("fieldflow \u{2013} [app] \u{2013} App.java \u{2013} IntelliJ IDEA 2024.1")
+                .as_deref(),
+            Some("fieldflow")
+        );
+        assert_eq!(
+            parse_intellij_project("fieldflow - IntelliJ IDEA").as_deref(),
+            Some("fieldflow")
+        );
+        assert_eq!(parse_intellij_project("Welcome to IntelliJ IDEA"), None);
+    }
+
+    #[test]
+    fn eclipse_project_is_best_effort_from_the_resource_path() {
+        assert_eq!(
+            parse_eclipse_project("App.java - fieldflow/src/main/java - Eclipse IDE").as_deref(),
+            Some("fieldflow")
+        );
+        assert_eq!(
+            parse_eclipse_project("fieldflow - Eclipse IDE").as_deref(),
+            Some("fieldflow")
+        );
+        assert_eq!(parse_eclipse_project("Eclipse IDE"), None);
     }
 
     #[test]

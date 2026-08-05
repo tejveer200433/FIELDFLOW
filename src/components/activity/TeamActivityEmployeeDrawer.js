@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import ApplicationUsageSummary from "@/components/activity/ApplicationUsageSummary";
+import CodingActivitySummary from "@/components/activity/CodingActivitySummary";
 import InputActivitySummary from "@/components/activity/InputActivitySummary";
 import WebsiteUsageSummary from "@/components/activity/WebsiteUsageSummary";
 import TeamActivityErrorState from "@/components/activity/TeamActivityErrorState";
@@ -60,6 +61,7 @@ export default function TeamActivityEmployeeDrawer({ employee, policy, onClose }
           <WebsiteUsageSummary usage={details.websiteUsage || []} />
           <section className="card p-5"><div className="mb-4"><h3 className="font-bold">Grouped timeline</h3><p className="text-sm text-slate-500">Session-level records for the selected range.</p></div><TeamActivityTimeline sessions={details.timeline} /></section>
           <ApplicationUsageSummary enabled={Boolean(policy?.collectApplicationNames)} usage={details.applicationUsage || []} sampleIntervalSeconds={policy?.sampleIntervalSeconds} trackedSeconds={latestSummary?.trackedSeconds || 0} />
+          <CodingActivitySummary enabled={Boolean(policy?.collectCodingProjectNames)} usage={details.codingUsage || []} />
         </>}
       </div>
     </aside>

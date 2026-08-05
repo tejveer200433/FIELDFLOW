@@ -28,6 +28,9 @@ export function policyChangeLabel(key) {
     heartbeatIntervalSeconds: "Heartbeat interval",
     collectApplicationNames: "Application-name collection",
     requireAcknowledgement: "Acknowledgement requirement",
-    retentionDays: "Retention period"
+    retentionDays: "Retention period",
+    websiteBlockingEnabled: "Website blocking",
+    blockedDomains: "Blocked domains",
+    collectCodingProjectNames: "Coding project collection"
   }[key] || key;
 }

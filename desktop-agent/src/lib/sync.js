@@ -127,12 +127,56 @@ export async function syncPendingWebsiteSamples(api, invokeCommand = invoke) {
   return totals;
 }
 
+async function syncCodingBatch(api, sessionId, samples, invokeCommand) {
+  const ids = samples.map(sample => sample.localSampleId);
+  const uploadSamples = samples.map(prepareUploadSample);
+  await invokeCommand("mark_coding_samples_uploading", { ids });
+  try {
+    const result = await api.ingestCoding({
+      trackingSessionId: sessionId,
+      samples: uploadSamples
+    });
+    const reconciliation = reconcileBatch(samples, result);
+    await invokeCommand("apply_coding_sync_result", { result: reconciliation });
+    return {
+      uploaded: reconciliation.confirmedIds.length,
+      rejected: reconciliation.failed.length
+    };
+  } catch (error) {
+    await invokeCommand("release_coding_samples", {
+      ids,
+      error: error.code || "NETWORK_ERROR",
+      retryAfterSeconds: error.retryAfterSeconds || null
+    });
+    throw error;
+  }
+}
+
+export async function syncPendingCodingSamples(api, invokeCommand = invoke) {
+  const samples = await invokeCommand("pending_coding_samples", { limit: 100 });
+  if (!samples.length) return { uploaded: 0, rejected: 0 };
+  const totals = { uploaded: 0, rejected: 0 };
+  const errors = [];
+  for (const group of groupSamplesBySession(samples)) {
+    try {
+      const result = await syncCodingBatch(api, group.sessionId, group.samples, invokeCommand);
+      totals.uploaded += result.uploaded;
+      totals.rejected += result.rejected;
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length) throw errors[0];
+  return totals;
+}
+
 export async function syncAllPending(api, deviceId, invokeCommand = invoke) {
   const totals = { uploaded: 0, rejected: 0 };
   const errors = [];
   for (const operation of [
     () => syncPendingSamples(api, deviceId, invokeCommand),
-    () => syncPendingWebsiteSamples(api, invokeCommand)
+    () => syncPendingWebsiteSamples(api, invokeCommand),
+    () => syncPendingCodingSamples(api, invokeCommand)
   ]) {
     try {
       const result = await operation();

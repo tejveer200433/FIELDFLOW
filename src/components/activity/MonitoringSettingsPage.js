@@ -5,6 +5,7 @@ import { RefreshCw, Shield } from "lucide-react";
 import { useAccess } from "@/components/AccessContext";
 import AdminActivityErrorState from "@/components/activity/AdminActivityErrorState";
 import AdminActivityLoadingState from "@/components/activity/AdminActivityLoadingState";
+import BlocklistOverrideAdministration from "@/components/activity/BlocklistOverrideAdministration";
 import MonitoringAcknowledgementSummary from "@/components/activity/MonitoringAcknowledgementSummary";
 import MonitoringAuditLog from "@/components/activity/MonitoringAuditLog";
 import MonitoringDeviceAdministration from "@/components/activity/MonitoringDeviceAdministration";
@@ -113,6 +114,7 @@ export default function MonitoringSettingsPage() {
     <MonitoringPolicyForm policy={policy} busy={busy === "policy"} onSave={savePolicy} />
     <div className="grid gap-6 xl:grid-cols-2"><MonitoringPolicyHistory /><MonitoringAcknowledgementSummary policy={policy} /></div>
     <MonitoringDeviceAdministration devices={devices} error={deviceError} busyDeviceId={busy} nextCursor={deviceCursor} loadingMore={busy === "devices"} onAction={deviceAction} onLoadMore={loadMoreDevices} />
+    {policy?.websiteBlockingEnabled && <BlocklistOverrideAdministration />}
     <MonitoringAuditLog />
     <section className="card p-5"><div className="flex gap-3"><Shield className="h-5 w-5 text-blue-600" /><div><h2 className="font-bold">Privacy and separation</h2><p className="mt-2 text-sm leading-6 text-slate-600">Activity tracking records aggregate input counts and session state only during explicit work sessions. Typed content, passwords, clipboard contents, screenshots, mouse coordinates, URLs, window titles, and full paths are not collected. Attendance and employee location sharing remain separate FIELD-FLOW features.</p></div></div></section>
   </div>;

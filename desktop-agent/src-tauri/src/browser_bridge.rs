@@ -110,6 +110,14 @@ fn handle(mut request: Request, app: &AppHandle) {
         );
         return;
     }
+    if request.method() == &Method::Get && request.url() == "/v1/blocklist" {
+        let blocklist = database::get_state(&database, "blocklist_json")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| r#"{"blockedDomains":[],"overrides":[]}"#.to_string());
+        respond(request, origin_value, 200, &blocklist);
+        return;
+    }
     if request.method() != &Method::Post || request.url() != "/v1/domain" {
         respond(
             request,

@@ -4,7 +4,7 @@
   "version": "0.3.0",
   "description": "Sends active website hostnames to the local FieldFlow desktop agent during explicit tracking sessions.",
   "incognito": "not_allowed",
-  "permissions": ["alarms", "storage", "tabs"],
+  "permissions": ["alarms", "storage", "tabs", "declarativeNetRequest"],
   "host_permissions": [
     "http://127.0.0.1:38473/*"
   ],
@@ -12,5 +12,8 @@
     "service_worker": "background.js",
     "type": "module"
   },
+  "web_accessible_resources": [
+    { "resources": ["blocked.html", "blocked.js"], "matches": ["<all_urls>"] }
+  ],
   "action": { "default_title": "FieldFlow Website Activity", "default_popup": "popup.html" }
 }

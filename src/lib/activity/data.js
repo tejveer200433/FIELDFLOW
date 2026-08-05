@@ -1,6 +1,6 @@
 import { ActivityError } from "@/lib/activity/responses";
 
-export const policySelect = "id,policy_version,is_active,tracking_enabled,idle_threshold_seconds,sample_interval_seconds,upload_interval_seconds,offline_sync_limit_seconds,heartbeat_interval_seconds,collect_application_names,require_acknowledgement,retention_days,created_at,updated_at";
+export const policySelect = "id,policy_version,is_active,tracking_enabled,idle_threshold_seconds,sample_interval_seconds,upload_interval_seconds,offline_sync_limit_seconds,heartbeat_interval_seconds,collect_application_names,require_acknowledgement,retention_days,website_blocking_enabled,blocked_domains,collect_coding_project_names,created_at,updated_at";
 
 export function mapPolicy(row) {
   if (!row) return null;
@@ -15,7 +15,27 @@ export function mapPolicy(row) {
     heartbeatIntervalSeconds: row.heartbeat_interval_seconds,
     collectApplicationNames: row.collect_application_names,
     requireAcknowledgement: row.require_acknowledgement,
-    retentionDays: row.retention_days
+    retentionDays: row.retention_days,
+    websiteBlockingEnabled: row.website_blocking_enabled,
+    blockedDomains: row.blocked_domains || [],
+    collectCodingProjectNames: row.collect_coding_project_names
+  };
+}
+
+export function mapBlocklistOverrideRequest(row) {
+  return {
+    id: row.id,
+    employeeId: row.employee_id,
+    domain: row.domain,
+    reason: row.reason,
+    status: row.status,
+    requestedMinutes: row.requested_minutes,
+    grantedMinutes: row.granted_minutes,
+    overrideEndsAt: row.override_ends_at,
+    reviewerComment: row.reviewer_comment,
+    reviewedBy: row.reviewed_by,
+    reviewedAt: row.reviewed_at,
+    createdAt: row.created_at
   };
 }
 

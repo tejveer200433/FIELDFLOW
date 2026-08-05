@@ -4,8 +4,8 @@ use crate::{
     database::{self, Database},
     input, logging,
     models::{
-        DeviceIdentity, InputActivityCounts, NewSample, PendingSample, PendingWebsiteSample,
-        SyncResult,
+        CodingContext, DeviceIdentity, InputActivityCounts, NewCodingSample, NewSample,
+        PendingCodingSample, PendingSample, PendingWebsiteSample, SyncResult,
     },
     platform, secure_store,
 };
@@ -53,6 +53,53 @@ pub fn get_active_application() -> Result<Option<String>, String> {
 #[tauri::command]
 pub fn get_device_identity() -> Result<DeviceIdentity, String> {
     platform::device_identity()
+}
+
+#[tauri::command]
+pub fn get_coding_context() -> Result<Option<CodingContext>, String> {
+    platform::active_coding_context()
+}
+
+#[tauri::command]
+pub fn enqueue_coding_sample(
+    database: State<'_, Database>,
+    sample: NewCodingSample,
+) -> Result<(), String> {
+    database::enqueue_coding(&database, &sample)
+}
+
+#[tauri::command]
+pub fn pending_coding_samples(
+    database: State<'_, Database>,
+    limit: u32,
+) -> Result<Vec<PendingCodingSample>, String> {
+    database::pending_codings(&database, limit)
+}
+
+#[tauri::command]
+pub fn mark_coding_samples_uploading(
+    database: State<'_, Database>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    database::mark_coding_uploading(&database, &ids)
+}
+
+#[tauri::command]
+pub fn release_coding_samples(
+    database: State<'_, Database>,
+    ids: Vec<String>,
+    error: String,
+    retry_after_seconds: Option<i64>,
+) -> Result<(), String> {
+    database::release_coding(&database, &ids, &error, retry_after_seconds)
+}
+
+#[tauri::command]
+pub fn apply_coding_sync_result(
+    database: State<'_, Database>,
+    result: SyncResult,
+) -> Result<(), String> {
+    database::apply_coding_result(&database, &result)
 }
 
 #[tauri::command]

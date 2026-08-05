@@ -4,6 +4,7 @@ import {
   groupSamplesBySession,
   normalizeUtcTimestamp,
   reconcileBatch,
+  syncPendingCodingSamples,
   syncPendingSamples,
   syncPendingWebsiteSamples
 } from "../src/lib/sync.js";
@@ -146,6 +147,42 @@ test("website samples upload through the authenticated agent using their origina
     capturedAt: "2026-08-03T12:00:00.000Z",
     domain: "example.com",
     browserName: "chrome",
+    durationSeconds: 60
+  }]);
+});
+
+test("coding samples upload through the authenticated agent using their original session", async () => {
+  const calls = [];
+  const queued = [{
+    localSampleId: "coding-one",
+    trackingSessionId: "session-a",
+    capturedAt: "2026-08-04T12:00:00+00:00",
+    ideName: "vscode",
+    projectName: "fieldflow-nextjs",
+    durationSeconds: 60
+  }];
+  const invokeCommand = async (command, payload) => {
+    calls.push({ command, payload });
+    if (command === "pending_coding_samples") return queued;
+    return null;
+  };
+  const api = {
+    ingestCoding: async body => {
+      calls.push({ command: "ingestCoding", payload: body });
+      return { acceptedCount: 1, rejected: [] };
+    }
+  };
+
+  const result = await syncPendingCodingSamples(api, invokeCommand);
+
+  assert.deepEqual(result, { uploaded: 1, rejected: 0 });
+  const upload = calls.find(call => call.command === "ingestCoding").payload;
+  assert.equal(upload.trackingSessionId, "session-a");
+  assert.deepEqual(upload.samples, [{
+    localSampleId: "coding-one",
+    capturedAt: "2026-08-04T12:00:00.000Z",
+    ideName: "vscode",
+    projectName: "fieldflow-nextjs",
     durationSeconds: 60
   }]);
 });

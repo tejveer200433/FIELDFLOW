@@ -21,11 +21,25 @@ export async function POST(request) {
     });
     if (error) throwActivityDatabaseError(error);
     const [heartbeat, policy] = [rpcRow(data), await getActivePolicy(session.client, { required: false })];
+    let activeOverrides = [];
+    if (policy?.website_blocking_enabled) {
+      const { data: overrides, error: overrideError } = await session.client
+        .from("website_block_override_requests")
+        .select("domain,override_ends_at")
+        .eq("employee_id", session.profile.id)
+        .eq("status", "Approved")
+        .gt("override_ends_at", new Date().toISOString());
+      if (overrideError) throw overrideError;
+      activeOverrides = (overrides || []).map(item => ({ domain: item.domain, overrideEndsAt: item.override_ends_at }));
+    }
     return activitySuccess({
       recordedAt: heartbeat.recorded_at,
       nextHeartbeatSeconds: policy?.heartbeat_interval_seconds || 60,
       deviceStatus: device.status,
-      trackingEnabled: Boolean(policy?.tracking_enabled)
+      trackingEnabled: Boolean(policy?.tracking_enabled),
+      websiteBlockingEnabled: Boolean(policy?.website_blocking_enabled),
+      blockedDomains: policy?.website_blocking_enabled ? (policy?.blocked_domains || []) : [],
+      activeOverrides
     }, { status: 201 });
   } catch (error) {
     return activityFailure(error);

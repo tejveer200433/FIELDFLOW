@@ -26,6 +26,35 @@ pub struct PendingSample {
     pub screen_locked: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodingContext {
+    pub ide_name: String,
+    pub project_name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewCodingSample {
+    pub local_sample_id: String,
+    pub tracking_session_id: String,
+    pub captured_at: String,
+    pub ide_name: String,
+    pub project_name: String,
+    pub duration_seconds: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingCodingSample {
+    pub local_sample_id: String,
+    pub tracking_session_id: String,
+    pub captured_at: String,
+    pub ide_name: String,
+    pub project_name: String,
+    pub duration_seconds: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct NewWebsiteSample {
     pub local_sample_id: String,

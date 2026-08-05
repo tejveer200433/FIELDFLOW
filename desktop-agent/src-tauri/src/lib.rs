@@ -30,7 +30,26 @@ fn tray_image() -> Image<'static> {
     Image::new_owned(pixels, 16, 16)
 }
 
+/// The agent window is hidden (not destroyed) when the user closes it, so tracking can
+/// continue from the tray. WebView2 is built on Chromium, which throttles JS timers
+/// (`setInterval`) in hidden/occluded windows to save power -- this is unrelated to
+/// whether the user's machine is otherwise busy, and left unchecked it can silently slow
+/// or stop the heartbeat/sample/sync loops that App.jsx drives entirely via
+/// `window.setInterval`, eventually causing the server to time out an otherwise-healthy
+/// session. Disabling these three Chromium flags keeps this webview's timers running at
+/// full rate regardless of window visibility.
+#[cfg(windows)]
+fn disable_background_timer_throttling() {
+    std::env::set_var(
+        "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+        "--disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding",
+    );
+}
+
 pub fn run() {
+    #[cfg(windows)]
+    disable_background_timer_throttling();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -133,6 +152,7 @@ pub fn run() {
             commands::get_screen_locked,
             commands::get_active_application,
             commands::get_device_identity,
+            commands::get_coding_context,
             commands::enqueue_sample,
             commands::pending_samples,
             commands::pending_website_samples,
@@ -142,6 +162,11 @@ pub fn run() {
             commands::release_website_samples,
             commands::apply_sync_result,
             commands::apply_website_sync_result,
+            commands::enqueue_coding_sample,
+            commands::pending_coding_samples,
+            commands::mark_coding_samples_uploading,
+            commands::release_coding_samples,
+            commands::apply_coding_sync_result,
             commands::recover_uploading_samples,
             commands::pending_sample_count,
             commands::set_agent_state,
@@ -152,4 +177,18 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("FieldFlow Activity Agent failed to start");
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::disable_background_timer_throttling;
+
+    #[test]
+    fn background_timer_throttling_is_disabled_for_webview2() {
+        disable_background_timer_throttling();
+        let value = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").unwrap();
+        assert!(value.contains("--disable-background-timer-throttling"));
+        assert!(value.contains("--disable-backgrounding-occluded-windows"));
+        assert!(value.contains("--disable-renderer-backgrounding"));
+    }
 }

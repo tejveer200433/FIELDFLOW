@@ -16,7 +16,10 @@ export const policyFields = [
   "heartbeatIntervalSeconds",
   "collectApplicationNames",
   "requireAcknowledgement",
-  "retentionDays"
+  "retentionDays",
+  "websiteBlockingEnabled",
+  "blockedDomains",
+  "collectCodingProjectNames"
 ];
 
 export function policyFormValues(policy) {
@@ -29,7 +32,10 @@ export function policyFormValues(policy) {
     heartbeatIntervalSeconds: Number(policy?.heartbeatIntervalSeconds ?? 60),
     collectApplicationNames: Boolean(policy?.collectApplicationNames),
     requireAcknowledgement: policy?.requireAcknowledgement ?? true,
-    retentionDays: Number(policy?.retentionDays ?? 90)
+    retentionDays: Number(policy?.retentionDays ?? 90),
+    websiteBlockingEnabled: Boolean(policy?.websiteBlockingEnabled),
+    blockedDomains: Array.isArray(policy?.blockedDomains) ? policy.blockedDomains : [],
+    collectCodingProjectNames: Boolean(policy?.collectCodingProjectNames)
   };
 }
 
@@ -44,9 +50,16 @@ export function validatePolicy(values) {
   return errors;
 }
 
+function changed(before, after) {
+  if (Array.isArray(before) || Array.isArray(after)) {
+    return JSON.stringify(before) !== JSON.stringify(after);
+  }
+  return before !== after;
+}
+
 export function policyChanges(currentPolicy, nextValues) {
   const current = policyFormValues(currentPolicy);
   return policyFields
-    .filter(field => current[field] !== nextValues[field])
+    .filter(field => changed(current[field], nextValues[field]))
     .map(field => ({ field, before: current[field], after: nextValues[field] }));
 }

@@ -48,6 +48,17 @@ export function reactivateMonitoringDevice(deviceId) {
   return updateMonitoringDevice(deviceId, "reactivate");
 }
 
+export function getBlocklistOverrideRequests() {
+  return policyRequest("/blocklist-requests").then(payload => payload.data.requests);
+}
+
+export function reviewBlocklistRequest({ id, decision, grantedMinutes, comment }) {
+  return policyRequest("/blocklist-requests", {
+    method: "PATCH",
+    body: JSON.stringify({ id, decision, grantedMinutes, comment })
+  });
+}
+
 export function getPolicyHistory() {
   return Promise.reject(new UnsupportedActivityReadError("Phase 2 exposes only the active policy, not policy history."));
 }

@@ -29,7 +29,7 @@ export async function GET(request, { params }) {
 
     const startTime = `${startDate}T00:00:00.000Z`;
     const endTime = `${endDate}T23:59:59.999Z`;
-    const [devicesResult, sessionsResult, activeSessionResult, summariesResult, heartbeatsResult, samplesResult, websitesResult, policy] = await Promise.all([
+    const [devicesResult, sessionsResult, activeSessionResult, summariesResult, heartbeatsResult, samplesResult, websitesResult, codingResult, policy] = await Promise.all([
       session.client.from("employee_devices")
         .select("id,employee_id,device_name,platform,operating_system_version,agent_version,status,registered_at,last_seen_at,revoked_at")
         .eq("employee_id", employeeId).order("registered_at", { ascending: false }),
@@ -56,9 +56,13 @@ export async function GET(request, { params }) {
         .select("captured_at,domain,browser_name,duration_seconds")
         .eq("employee_id", employeeId).gte("captured_at", startTime).lte("captured_at", endTime)
         .order("captured_at", { ascending: false }).limit(5000),
+      session.client.from("coding_activity_samples")
+        .select("captured_at,ide_name,project_name,duration_seconds")
+        .eq("employee_id", employeeId).gte("captured_at", startTime).lte("captured_at", endTime)
+        .order("captured_at", { ascending: false }).limit(5000),
       getActivePolicy(session.client, { required: false })
     ]);
-    const failure = [devicesResult, sessionsResult, activeSessionResult, summariesResult, heartbeatsResult, samplesResult, websitesResult]
+    const failure = [devicesResult, sessionsResult, activeSessionResult, summariesResult, heartbeatsResult, samplesResult, websitesResult, codingResult]
       .find(result => result.error);
     if (failure) throw failure.error;
 
@@ -72,6 +76,16 @@ export async function GET(request, { params }) {
       : heartbeatsResult.data?.[0] || null;
     const applicationCounts = new Map();
     const websiteCounts = new Map();
+    const codingCounts = new Map();
+    if (policy?.collect_coding_project_names) {
+      for (const sample of codingResult.data || []) {
+        const key = `${sample.ide_name}:${sample.project_name}`;
+        const current = codingCounts.get(key) || { ideName: sample.ide_name, projectName: sample.project_name, durationSeconds: 0, lastSeenAt: null };
+        current.durationSeconds += Number(sample.duration_seconds) || 0;
+        if (!current.lastSeenAt) current.lastSeenAt = sample.captured_at;
+        codingCounts.set(key, current);
+      }
+    }
     for (const sample of websitesResult.data || []) {
       const current = websiteCounts.get(sample.domain) || { durationSeconds: 0, lastSeenAt: null };
       current.durationSeconds += Number(sample.duration_seconds) || 0;
@@ -124,6 +138,8 @@ export async function GET(request, { params }) {
         .sort((a, b) => b.durationSeconds - a.durationSeconds).slice(0, 25),
       applicationUsage: Array.from(applicationCounts, ([application, value]) => ({ application, ...value }))
         .sort((a, b) => b.sampleCount - a.sampleCount).slice(0, 25),
+      codingUsage: Array.from(codingCounts.values())
+        .sort((a, b) => b.durationSeconds - a.durationSeconds).slice(0, 25),
       recentHeartbeat: heartbeat ? {
         deviceId: heartbeat.device_id,
         trackingSessionId: heartbeat.tracking_session_id,

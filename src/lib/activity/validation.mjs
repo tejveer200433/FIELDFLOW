@@ -14,8 +14,12 @@ const forbiddenKeys = new Set([
   "permission", "organisationId", "organizationId", "deviceIdentifierHash",
   "device_identifier_hash", "keystrokes", "keys", "keyNames", "keyCodes",
   "typedText", "text", "clipboard", "clipboardContent", "screenshot", "screenshots",
-  "mouseCoordinates", "coordinates", "token", "accessToken", "serviceRoleKey"
+  "mouseCoordinates", "coordinates", "token", "accessToken", "serviceRoleKey",
+  "windowTitle", "window_title", "filePath", "file_path", "fileName", "file_name"
 ]);
+
+const hostnamePattern = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const ideNames = ["vscode", "cursor", "intellij", "eclipse"];
 
 function fail(message, code) {
   throw new ActivityValidationError(message, code);
@@ -181,6 +185,55 @@ export function parseWebsiteSampleBatch(value) {
   return { trackingSessionId: uuid(body.trackingSessionId, "trackingSessionId"), samples };
 }
 
+export function parseCodingSampleBatch(value) {
+  const body = object(value, ["trackingSessionId", "samples"]);
+  if (!Array.isArray(body.samples) || body.samples.length < 1 || body.samples.length > 100) {
+    fail("samples must contain between 1 and 100 items.", "INVALID_BATCH_SIZE");
+  }
+  const seen = new Set();
+  const samples = body.samples.map((item, index) => {
+    const sample = object(item, [
+      "localSampleId", "capturedAt", "ideName", "projectName", "durationSeconds"
+    ], `samples[${index}]`);
+    const localSampleId = string(sample.localSampleId, `samples[${index}].localSampleId`, { max: 120 });
+    if (!localIdPattern.test(localSampleId)) fail(`samples[${index}].localSampleId has an invalid format.`);
+    if (seen.has(localSampleId)) fail(`Duplicate localSampleId "${localSampleId}" in this batch.`, "DUPLICATE_BATCH_ID");
+    seen.add(localSampleId);
+    return {
+      localSampleId,
+      capturedAt: timestamp(sample.capturedAt, `samples[${index}].capturedAt`),
+      ideName: enumeration(sample.ideName, `samples[${index}].ideName`, ideNames),
+      projectName: string(sample.projectName, `samples[${index}].projectName`, { max: 160 }),
+      durationSeconds: integer(sample.durationSeconds, `samples[${index}].durationSeconds`, 1, 300, 60)
+    };
+  });
+  return { trackingSessionId: uuid(body.trackingSessionId, "trackingSessionId"), samples };
+}
+
+export function parseBlocklistOverrideRequest(value) {
+  const body = object(value, ["domain", "reason", "requestedMinutes"]);
+  const domain = string(body.domain, "domain", { max: 253 }).toLowerCase();
+  if (!hostnamePattern.test(domain)) fail("domain must be a hostname only.");
+  return {
+    domain,
+    reason: string(body.reason, "reason", { max: 500 }),
+    requestedMinutes: integer(body.requestedMinutes, "requestedMinutes", 5, 480, 30)
+  };
+}
+
+export function parseBlocklistOverrideReview(value) {
+  const body = object(value, ["id", "decision", "grantedMinutes", "comment"]);
+  const decision = enumeration(body.decision, "decision", ["Approved", "Rejected"]);
+  return {
+    id: uuid(body.id, "id"),
+    decision,
+    grantedMinutes: decision === "Approved"
+      ? integer(body.grantedMinutes, "grantedMinutes", 5, 480, 30)
+      : null,
+    comment: optionalString(body.comment, "comment", { max: 500 })
+  };
+}
+
 export function parseHeartbeat(value) {
   const body = object(value, ["deviceId", "trackingSessionId", "agentVersion", "onlineStatus", "batteryLevel"]);
   return {
@@ -205,11 +258,25 @@ export function parsePolicyAcknowledgement(value) {
   };
 }
 
+function domainList(value, label, { max = 50 } = {}) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) fail(`${label} must be a list of domains.`);
+  const domains = [...new Set(
+    value.map(item => string(item, `${label} entry`, { max: 253 }).toLowerCase())
+  )];
+  if (domains.length > max) fail(`${label} cannot list more than ${max} domains.`);
+  for (const domain of domains) {
+    if (!hostnamePattern.test(domain)) fail(`${label} entry "${domain}" must be a hostname only.`);
+  }
+  return domains;
+}
+
 export function parsePolicyAdministration(value) {
   const body = object(value, [
     "trackingEnabled", "idleThresholdSeconds", "sampleIntervalSeconds",
     "uploadIntervalSeconds", "offlineSyncLimitSeconds", "heartbeatIntervalSeconds",
-    "collectApplicationNames", "requireAcknowledgement", "retentionDays"
+    "collectApplicationNames", "requireAcknowledgement", "retentionDays",
+    "websiteBlockingEnabled", "blockedDomains", "collectCodingProjectNames"
   ]);
   return {
     trackingEnabled: boolean(body.trackingEnabled, "trackingEnabled", false),
@@ -220,7 +287,10 @@ export function parsePolicyAdministration(value) {
     heartbeatIntervalSeconds: integer(body.heartbeatIntervalSeconds, "heartbeatIntervalSeconds", 15, 3600, 60),
     collectApplicationNames: boolean(body.collectApplicationNames, "collectApplicationNames", false),
     requireAcknowledgement: boolean(body.requireAcknowledgement, "requireAcknowledgement", true),
-    retentionDays: integer(body.retentionDays, "retentionDays", 1, 3650, 90)
+    retentionDays: integer(body.retentionDays, "retentionDays", 1, 3650, 90),
+    websiteBlockingEnabled: boolean(body.websiteBlockingEnabled, "websiteBlockingEnabled", false),
+    blockedDomains: domainList(body.blockedDomains, "blockedDomains"),
+    collectCodingProjectNames: boolean(body.collectCodingProjectNames, "collectCodingProjectNames", false)
   };
 }
 

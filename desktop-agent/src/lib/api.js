@@ -78,6 +78,9 @@ export function createActivityApi({ baseUrl, supabase, fetchImpl = fetch }) {
     ingestWebsites: body => request("/api/activity/websites/ingest", {
       method: "POST", body: JSON.stringify(body)
     }),
+    ingestCoding: body => request("/api/activity/coding/ingest", {
+      method: "POST", body: JSON.stringify(body)
+    }),
     heartbeat: body => request("/api/activity/heartbeat", {
       method: "POST", body: JSON.stringify(body)
     })

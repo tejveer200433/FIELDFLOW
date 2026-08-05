@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { useAccess } from "@/components/AccessContext";
 import ActivityDeviceList from "@/components/activity/ActivityDeviceList";
@@ -11,6 +11,8 @@ import ActivityStatusCard from "@/components/activity/ActivityStatusCard";
 import ActivitySummaryCards from "@/components/activity/ActivitySummaryCards";
 import ActivityTimeline from "@/components/activity/ActivityTimeline";
 import ApplicationUsageSummary from "@/components/activity/ApplicationUsageSummary";
+import BlockedSiteRequestForm from "@/components/activity/BlockedSiteRequestForm";
+import CodingActivitySummary from "@/components/activity/CodingActivitySummary";
 import CurrentTrackingSession from "@/components/activity/CurrentTrackingSession";
 import InputActivitySummary from "@/components/activity/InputActivitySummary";
 import MonitoringAcknowledgement from "@/components/activity/MonitoringAcknowledgement";
@@ -188,6 +190,8 @@ export default function EmployeeActivityPage() {
       <ApplicationUsageSummary enabled={Boolean(policy?.collectApplicationNames)} usage={activity?.applicationUsage || []} sampleIntervalSeconds={policy?.sampleIntervalSeconds} trackedSeconds={rangeTrackedSeconds} />
     </div>
     <WebsiteUsageSummary usage={activity?.websiteUsage || []} />
+    <CodingActivitySummary enabled={Boolean(policy?.collectCodingProjectNames)} usage={activity?.codingUsage || []} />
+    {policy?.websiteBlockingEnabled && <Suspense fallback={null}><BlockedSiteRequestForm /></Suspense>}
     <section className="card p-5 text-sm text-slate-600">
       <h2 className="font-bold text-slate-900">Heartbeat and sync status</h2>
       {heartbeat

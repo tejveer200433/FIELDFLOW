@@ -4,9 +4,11 @@ import { detectBrowserName } from "./browser-detection.mjs";
 const extensionApi = globalThis.browser ?? globalThis.chrome;
 const STATUS_KEY = "fieldflowWebsiteStatus";
 const SAMPLE_ALARM = "fieldflow-domain-sample";
+const BLOCK_RULE_PREFIX = 1000;
 let browserChangeTimer;
 let lastQueuedDomain = null;
 let detectedBrowserName;
+let currentBlockRuleIds = [];
 
 async function setStatus(state, message, domain = null) {
   await extensionApi.storage.local.set({
@@ -62,6 +64,42 @@ async function sampleActiveWebsite({ durationSeconds = CONFIG.sampleSeconds, req
   }
 }
 
+function activeBlockedDomains(blocklist) {
+  const overridden = new Set((blocklist.overrides || [])
+    .filter(item => new Date(item.overrideEndsAt).getTime() > Date.now())
+    .map(item => item.domain));
+  return (blocklist.blockedDomains || []).filter(domain => !overridden.has(domain));
+}
+
+// Fetches the current blocklist + any manager-approved overrides from the desktop
+// agent's local bridge and syncs them into declarativeNetRequest dynamic rules. This is
+// the only place the extension learns about blocking policy -- it never talks to the
+// FieldFlow API directly, only to the already-authenticated desktop agent.
+async function refreshBlockingRules() {
+  if (!extensionApi.declarativeNetRequest) return;
+  let domains = [];
+  try {
+    const response = await fetch(`${CONFIG.bridgeUrl}/v1/blocklist`);
+    if (response.ok) domains = activeBlockedDomains(await response.json());
+  } catch {
+    return;
+  }
+  const addRules = domains.map((domain, index) => ({
+    id: BLOCK_RULE_PREFIX + index,
+    priority: 1,
+    action: {
+      type: "redirect",
+      redirect: { extensionPath: `/blocked.html?domain=${encodeURIComponent(domain)}` }
+    },
+    condition: { requestDomains: [domain], resourceTypes: ["main_frame"] }
+  }));
+  await extensionApi.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: currentBlockRuleIds,
+    addRules
+  });
+  currentBlockRuleIds = addRules.map(rule => rule.id);
+}
+
 async function ensureSamplingAlarm() {
   const existing = await extensionApi.alarms.get(SAMPLE_ALARM);
   if (!existing) {
@@ -77,16 +115,22 @@ function sampleAfterBrowserChange() {
 }
 
 ensureSamplingAlarm().catch(() => {});
+refreshBlockingRules().catch(() => {});
 extensionApi.runtime.onInstalled.addListener(() => {
   ensureSamplingAlarm().catch(() => {});
+  refreshBlockingRules().catch(() => {});
   sampleAfterBrowserChange();
 });
 extensionApi.runtime.onStartup.addListener(() => {
   ensureSamplingAlarm().catch(() => {});
+  refreshBlockingRules().catch(() => {});
   sampleAfterBrowserChange();
 });
 extensionApi.alarms.onAlarm.addListener(alarm => {
-  if (alarm.name === SAMPLE_ALARM) sampleActiveWebsite().catch(() => {});
+  if (alarm.name === SAMPLE_ALARM) {
+    sampleActiveWebsite().catch(() => {});
+    refreshBlockingRules().catch(() => {});
+  }
 });
 extensionApi.tabs.onActivated.addListener(sampleAfterBrowserChange);
 extensionApi.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
