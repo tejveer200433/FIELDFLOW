@@ -322,7 +322,7 @@ export function parseDeviceFilters(searchParams) {
 export function parseTeamFilters(searchParams) {
   const query = queryObject(searchParams, ["status", "employeeId", "date", "limit", "cursor", "sort"]);
   return {
-    status: query.status ? enumeration(query.status, "status", ["active", "idle", "offline", "not_tracking"]) : null,
+    status: query.status ? enumeration(query.status, "status", ["active", "idle", "offline", "unreachable", "not_tracking"]) : null,
     employeeId: uuid(query.employeeId, "employeeId", true),
     date: date(query.date, "date", true),
     sort: enumeration(query.sort, "sort", ["name", "last_seen", "activity"], "name"),

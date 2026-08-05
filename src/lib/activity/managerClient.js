@@ -3,7 +3,7 @@
 import { authenticatedFetch } from "@/lib/apiClient";
 import { ActivityApiError, getActivePolicy } from "@/lib/activity/client";
 
-const allowedStatuses = new Set(["active", "idle", "offline", "not_tracking"]);
+const allowedStatuses = new Set(["active", "idle", "offline", "unreachable", "not_tracking"]);
 const allowedSorts = new Set(["name", "last_seen", "activity"]);
 
 async function managerActivityRequest(path) {

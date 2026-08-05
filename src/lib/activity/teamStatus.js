@@ -1,4 +1,4 @@
-export const TEAM_ACTIVITY_STATUSES = ["active", "idle", "offline", "not_tracking"];
+export const TEAM_ACTIVITY_STATUSES = ["active", "idle", "offline", "unreachable", "not_tracking"];
 
 export function isTeamActivityStatus(value) {
   return TEAM_ACTIVITY_STATUSES.includes(value);
@@ -9,6 +9,7 @@ export function statusTone(status) {
     active: "emerald",
     idle: "amber",
     offline: "slate",
+    unreachable: "rose",
     not_tracking: "blue"
   }[status] || "slate";
 }

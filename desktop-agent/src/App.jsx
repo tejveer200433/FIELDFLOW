@@ -308,11 +308,13 @@ export default function App() {
         await agentLog("update_restart_recovered");
       }
       await agentLog("login_succeeded");
+      return true;
     } catch (initializationError) {
       await agentLog("login_failed", "warn");
       setError(initializationError.message || "The agent could not initialize.");
       const { data } = await supabase.auth.getSession();
       if (!data.session) setAccount(null);
+      return false;
     } finally {
       setLoading(false);
     }
@@ -331,11 +333,27 @@ export default function App() {
       setLoading(false);
       return undefined;
     }
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) initialize();
-      else setLoading(false);
-    });
-    return clearTimers;
+    let cancelled = false;
+    let retryTimer;
+    const attemptStartup = async (attempt = 0) => {
+      const { data } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (!data.session) {
+        setLoading(false);
+        return;
+      }
+      const succeeded = await initialize();
+      if (cancelled || succeeded) return;
+      const delay = Math.min(60_000, 5_000 * 2 ** attempt);
+      await agentLog("startup_retry_scheduled", "warn");
+      retryTimer = window.setTimeout(() => attemptStartup(attempt + 1), delay);
+    };
+    attemptStartup();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(retryTimer);
+      clearTimers();
+    };
   }, [clearTimers, initialize, supabase]);
 
   useEffect(() => {
@@ -648,7 +666,8 @@ export default function App() {
           ? <button id="stop-button" className="danger" onClick={stopTracking}>Stop tracking</button>
           : <button id="start-button" onClick={startTracking} disabled={!policy?.trackingEnabled}>Start tracking</button>}
         <button id="sync-button" className="secondary sync-button" onClick={performSync} disabled={!device || !online}>Sync now</button>
-        {!policy?.trackingEnabled && <p className="warning">Activity tracking is currently disabled by your administrator.</p>}
+        {policy && !policy.trackingEnabled && <p className="warning">Activity tracking is currently disabled by your administrator.</p>}
+        {!policy && <p className="warning">Unable to reach the FieldFlow service to load your monitoring policy. Check your connection.</p>}
       </section>
       <section className="grid">
         <article className="card metric"><span>Session duration</span><strong>{formatDuration(duration)}</strong></article>

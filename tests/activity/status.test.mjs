@@ -30,3 +30,30 @@ test("stale heartbeat is offline", () => {
     now
   }), "offline");
 });
+
+test("no session but a device that hasn't checked in recently is unreachable", () => {
+  assert.equal(deriveActivityStatus({
+    session: null,
+    heartbeat: null,
+    device: { status: "active", last_seen_at: "2026-07-28T11:00:00.000Z" },
+    now
+  }), "unreachable");
+});
+
+test("no session with a recently-seen device is not_tracking, not unreachable", () => {
+  assert.equal(deriveActivityStatus({
+    session: null,
+    heartbeat: null,
+    device: { status: "active", last_seen_at: "2026-07-28T11:55:00.000Z" },
+    now
+  }), "not_tracking");
+});
+
+test("no session with a pending or revoked device is not_tracking regardless of staleness", () => {
+  assert.equal(deriveActivityStatus({
+    session: null,
+    heartbeat: null,
+    device: { status: "pending", last_seen_at: "2026-07-01T00:00:00.000Z" },
+    now
+  }), "not_tracking");
+});

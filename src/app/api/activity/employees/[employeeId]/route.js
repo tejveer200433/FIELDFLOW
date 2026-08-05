@@ -68,6 +68,11 @@ export async function GET(request, { params }) {
 
     const sessions = sessionsResult.data || [];
     const currentSession = activeSessionResult.data || null;
+    const primaryDevice = currentSession
+      ? null
+      : (devicesResult.data || [])
+          .filter(item => item.status === "active")
+          .sort((a, b) => String(b.last_seen_at || "").localeCompare(String(a.last_seen_at || "")))[0] || null;
     const heartbeat = currentSession
       ? (heartbeatsResult.data || []).find(item =>
           item.tracking_session_id === currentSession.id
@@ -120,6 +125,7 @@ export async function GET(request, { params }) {
       currentStatus: deriveActivityStatus({
         session: currentSession,
         heartbeat,
+        device: primaryDevice,
         idleThresholdSeconds: policy?.idle_threshold_seconds || 300
       }),
       currentSession: currentSession ? mapSession(currentSession) : null,

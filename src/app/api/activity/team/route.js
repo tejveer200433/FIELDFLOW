@@ -79,6 +79,7 @@ export async function GET(request) {
         currentStatus: deriveActivityStatus({
           session: activeSession,
           heartbeat,
+          device,
           idleThresholdSeconds: policy?.idle_threshold_seconds || 300
         }),
         activeSessionId: activeSession?.id || null,

@@ -6,7 +6,9 @@
   "incognito": "not_allowed",
   "permissions": ["alarms", "storage", "tabs", "declarativeNetRequest"],
   "host_permissions": [
-    "http://127.0.0.1:38473/*"
+    "http://127.0.0.1:38473/*",
+    "http://*/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "background.js",

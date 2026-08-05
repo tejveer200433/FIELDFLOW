@@ -81,7 +81,9 @@ async function refreshBlockingRules() {
   try {
     const response = await fetch(`${CONFIG.bridgeUrl}/v1/blocklist`);
     if (response.ok) domains = activeBlockedDomains(await response.json());
-  } catch {
+    else console.warn("FieldFlow: blocklist fetch not ok", response.status);
+  } catch (error) {
+    console.error("FieldFlow: blocklist fetch failed", error);
     return;
   }
   const addRules = domains.map((domain, index) => ({
@@ -93,11 +95,16 @@ async function refreshBlockingRules() {
     },
     condition: { requestDomains: [domain], resourceTypes: ["main_frame"] }
   }));
-  await extensionApi.declarativeNetRequest.updateDynamicRules({
-    removeRuleIds: currentBlockRuleIds,
-    addRules
-  });
-  currentBlockRuleIds = addRules.map(rule => rule.id);
+  try {
+    await extensionApi.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds: currentBlockRuleIds,
+      addRules
+    });
+    currentBlockRuleIds = addRules.map(rule => rule.id);
+    console.log("FieldFlow: blocking rules updated", addRules);
+  } catch (error) {
+    console.error("FieldFlow: updateDynamicRules failed", error, addRules);
+  }
 }
 
 async function ensureSamplingAlarm() {

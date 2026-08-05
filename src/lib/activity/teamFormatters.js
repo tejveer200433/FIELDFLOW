@@ -23,6 +23,7 @@ export function statusLabel(status) {
     active: "Active",
     idle: "Idle",
     offline: "Offline",
+    unreachable: "Unreachable",
     not_tracking: "Not tracking"
   }[status] || "Unknown";
 }

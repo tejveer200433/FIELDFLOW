@@ -77,7 +77,19 @@ fn respond(request: Request, origin: Option<&str>, status: u16, body: &str) {
 
 fn handle(mut request: Request, app: &AppHandle) {
     let origin = extension_origin(&request);
-    if origin.is_none() {
+    let origin_header_present = request
+        .headers()
+        .iter()
+        .any(|header| header.field.equiv("Origin"));
+    let is_safe_read = request.method() == &Method::Get
+        && matches!(request.url(), "/v1/status" | "/v1/blocklist");
+
+    // Extension background-script GET fetches can arrive with no Origin header at all
+    // (observed in Brave -- POST requests from the same extension always include one).
+    // Only relax the check for GET on these two read-only, non-sensitive endpoints: a
+    // request that DOES send an Origin header must still match an extension origin, and
+    // the mutating POST endpoint below always requires a valid extension origin.
+    if origin.is_none() && (origin_header_present || !is_safe_read) {
         respond(
             request,
             None,

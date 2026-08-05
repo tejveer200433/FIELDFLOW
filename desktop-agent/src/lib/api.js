@@ -30,14 +30,30 @@ export function createActivityApi({ baseUrl, supabase, fetchImpl = fetch }) {
     let accessToken = await sessionToken();
     let retriedAuthentication = false;
     while (true) {
-      const response = await fetchImpl(`${baseUrl}${path}`, {
-        ...options,
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-          ...(options.headers || {})
-        }
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20_000);
+      let response;
+      try {
+        response = await fetchImpl(`${baseUrl}${path}`, {
+          ...options,
+          signal: controller.signal,
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+            ...(options.headers || {})
+          }
+        });
+      } catch (fetchError) {
+        throw new ActivityApiError(
+          fetchError.name === "AbortError"
+            ? "The FieldFlow activity service timed out."
+            : "The FieldFlow activity service is unavailable.",
+          "NETWORK_ERROR",
+          0
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
       if (response.status === 401 && !retriedAuthentication) {
         retriedAuthentication = true;
         accessToken = await sessionToken({ forceRefresh: true });
