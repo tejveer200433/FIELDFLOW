@@ -26,3 +26,6 @@ browser-extension-dist/
 
 # Nested desktop-agent native build output
 desktop-agent/src-tauri/target/
+
+# Local Claude Code tool settings
+.claude/
