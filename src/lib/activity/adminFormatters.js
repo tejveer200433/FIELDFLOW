@@ -31,6 +31,9 @@ export function policyChangeLabel(key) {
     retentionDays: "Retention period",
     websiteBlockingEnabled: "Website blocking",
     blockedDomains: "Blocked domains",
-    collectCodingProjectNames: "Coding project collection"
+    collectCodingProjectNames: "Coding project collection",
+    collectScreenshots: "Screenshot capture",
+    screenshotIntervalSeconds: "Screenshot interval",
+    screenshotExcludedApps: "Screenshot exclude list"
   }[key] || key;
 }

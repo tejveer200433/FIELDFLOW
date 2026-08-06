@@ -15,6 +15,7 @@ The activity subsystem can store:
 - Device registration status
 - Heartbeat timestamps
 - Calculated daily activity summaries
+- Periodic screenshots of the employee's screen, only when explicitly enabled by policy (default off) and never while an administrator-configured excluded application is in the foreground
 
 The current Windows agent deliberately reports keyboard and mouse counts as zero because it does not install input hooks.
 
@@ -29,7 +30,8 @@ The system has no approved field or collection path for:
 - Clipboard contents
 - Mouse coordinates or clicked elements
 - Message or form contents
-- Screenshots or screen video
+- Screen video, webcam, or microphone
+- Screenshots, while collection is disabled (the default) or of an excluded application
 - Browser history or URLs
 - Window titles
 - Document names
@@ -49,6 +51,7 @@ Validation rejects forbidden request fields. Database tables do not contain colu
 - Tracking never starts automatically on first installation.
 - Required policy acknowledgement must be explicit and is never preselected.
 - Application names are collected only when the active policy enables them.
+- Screenshots are collected only when the active policy enables them, on a policy-configured interval (3-5 minutes), and are never captured while the foreground application matches a policy-configured exclude list -- the exclude check runs on-device before any capture is attempted, and is independently re-checked server-side before an upload is accepted.
 - Locked samples skip application lookup and use zero input counts.
 - Attendance and location sharing are separate systems and are not converted into activity monitoring.
 

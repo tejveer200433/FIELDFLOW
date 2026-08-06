@@ -11,7 +11,8 @@ const numberFields = [
   ["uploadIntervalSeconds", "Upload interval (seconds)", "How often queued samples are uploaded."],
   ["heartbeatIntervalSeconds", "Heartbeat interval (seconds)", "How often the agent reports its online state."],
   ["offlineSyncLimitSeconds", "Offline sync limit (seconds)", "Maximum age accepted for offline samples."],
-  ["retentionDays", "Retention period (days)", "Configured retention period for activity records."]
+  ["retentionDays", "Retention period (days)", "Configured retention period for activity records."],
+  ["screenshotIntervalSeconds", "Screenshot interval (seconds)", "How often the desktop agent captures a screenshot, when enabled."]
 ];
 
 export default function MonitoringPolicyForm({ policy, busy, onSave }) {
@@ -41,6 +42,12 @@ export default function MonitoringPolicyForm({ policy, busy, onSave }) {
       if (!approved) return;
     }
     if (policy && values.retentionDays < policy.retentionDays && !window.confirm(`Reduce retention from ${policy.retentionDays} to ${values.retentionDays} days? This creates a new policy version.`)) return;
+    if (!policy?.collectScreenshots && values.collectScreenshots) {
+      const approved = window.confirm(
+        `Enable periodic screenshot capture?\n\nThis captures the employee's screen roughly every ${values.screenshotIntervalSeconds} seconds during a tracking session.${values.screenshotExcludedApps.length ? ` Excluded applications: ${values.screenshotExcludedApps.join(", ")}.` : " No applications are excluded yet."}\n\nEmployees must acknowledge the updated monitoring policy before this applies to them. This is a significant change from FieldFlow's default privacy stance -- confirm your organisation's policy and applicable law permit this before enabling it.`
+      );
+      if (!approved) return;
+    }
     await onSave(values);
   }
 
@@ -49,6 +56,9 @@ export default function MonitoringPolicyForm({ policy, busy, onSave }) {
     <div className="mt-5 grid gap-3 sm:grid-cols-2"><label className="flex items-start gap-3 rounded-xl border p-4"><input type="checkbox" checked={values.trackingEnabled} onChange={event => set("trackingEnabled", event.target.checked)} className="mt-1 h-4 w-4" /><span><strong className="block text-sm">Enable monitoring</strong><span className="text-xs text-slate-500">Employees can start explicit tracking sessions.</span></span></label><label className="flex items-start gap-3 rounded-xl border p-4"><input type="checkbox" checked={values.collectApplicationNames} onChange={event => set("collectApplicationNames", event.target.checked)} className="mt-1 h-4 w-4" /><span><strong className="block text-sm">Collect application names</strong><span className="text-xs text-slate-500">Does not include titles, URLs, documents, or file paths.</span></span></label><label className="flex items-start gap-3 rounded-xl border p-4"><input type="checkbox" checked={values.requireAcknowledgement} onChange={event => set("requireAcknowledgement", event.target.checked)} className="mt-1 h-4 w-4" /><span><strong className="block text-sm">Require acknowledgement</strong><span className="text-xs text-slate-500">Employees acknowledge each active policy version.</span></span></label><label className="flex items-start gap-3 rounded-xl border p-4"><input type="checkbox" checked={values.collectCodingProjectNames} onChange={event => set("collectCodingProjectNames", event.target.checked)} className="mt-1 h-4 w-4" /><span><strong className="block text-sm">Collect coding project names</strong><span className="text-xs text-slate-500">Reports which of VS Code, Cursor, IntelliJ, or Eclipse is active and a parsed project name. Never includes window titles, file names, or paths.</span></span></label></div>
     <section className="mt-5 rounded-xl border p-4"><label className="flex items-start gap-3"><input type="checkbox" checked={values.websiteBlockingEnabled} onChange={event => set("websiteBlockingEnabled", event.target.checked)} className="mt-1 h-4 w-4" /><span><strong className="block text-sm">Block listed websites in the browser</strong><span className="text-xs text-slate-500">Requires the FieldFlow browser extension. Employees can request temporary access; a manager or admin approves it.</span></span></label>
       <label className="mt-4 block"><span className="label">Blocked domains (one per line)</span><textarea className="input min-h-24" value={values.blockedDomains.join("\n")} onChange={event => set("blockedDomains", event.target.value.split("\n").map(line => line.trim()).filter(Boolean))} placeholder={"instagram.com\nyoutube.com\nweb.whatsapp.com"} /><span className="mt-1 block text-xs text-slate-500">Hostnames only, up to 50. Subdomains of a blocked domain are not blocked automatically.</span></label>
+    </section>
+    <section className="mt-5 rounded-xl border p-4"><label className="flex items-start gap-3"><input type="checkbox" checked={values.collectScreenshots} onChange={event => set("collectScreenshots", event.target.checked)} className="mt-1 h-4 w-4" /><span><strong className="block text-sm">Capture periodic screenshots</strong><span className="text-xs text-slate-500">Off by default. Employees must acknowledge the updated policy before this applies to them. Never captures an application on the exclude list below.</span></span></label>
+      <label className="mt-4 block"><span className="label">Excluded applications (one per line)</span><textarea className="input min-h-24" value={values.screenshotExcludedApps.join("\n")} onChange={event => set("screenshotExcludedApps", event.target.value.split("\n").map(line => line.trim()).filter(Boolean))} placeholder={"1password\nbanking-app"} /><span className="mt-1 block text-xs text-slate-500">Process/application names, up to 50. A screenshot is never captured while one of these is the active application, regardless of the capture interval.</span></label>
     </section>
     <section className="mt-5 rounded-xl bg-slate-50 p-4"><h3 className="text-sm font-bold">Changes in the next version</h3>{changes.length ? <ul className="mt-2 space-y-1 text-sm text-slate-600">{changes.map(change => <li key={change.field}>{policyChangeLabel(change.field)}: <strong>{String(change.before)}</strong> → <strong>{String(change.after)}</strong></li>)}</ul> : <p className="mt-2 text-sm text-slate-500">No changes yet.</p>}</section>
     {errors.form && <p role="alert" className="mt-3 text-sm text-rose-600">{errors.form}</p>}

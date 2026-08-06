@@ -5,9 +5,10 @@ use crate::{
     input, logging,
     models::{
         CodingContext, DeviceIdentity, InputActivityCounts, NewCodingSample, NewSample,
-        PendingCodingSample, PendingSample, PendingWebsiteSample, SyncResult,
+        PendingCodingSample, PendingSample, PendingScreenshotSample, PendingWebsiteSample,
+        SyncResult,
     },
-    platform, secure_store,
+    platform, screenshot, secure_store,
 };
 
 #[tauri::command]
@@ -221,4 +222,55 @@ pub fn agent_log(
     debug_enabled: bool,
 ) -> Result<(), String> {
     logging::write(&app, &event, &level, debug_enabled)
+}
+
+#[tauri::command]
+pub fn capture_screenshot(
+    app: AppHandle,
+    database: State<'_, Database>,
+    session_id: String,
+) -> Result<Option<PendingScreenshotSample>, String> {
+    screenshot::capture_and_enqueue(&app, &database, &session_id)
+}
+
+#[tauri::command]
+pub fn pending_screenshot_samples(
+    database: State<'_, Database>,
+    limit: u32,
+) -> Result<Vec<PendingScreenshotSample>, String> {
+    database::pending_screenshots(&database, limit)
+}
+
+#[tauri::command]
+pub fn mark_screenshot_samples_uploading(
+    database: State<'_, Database>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    database::mark_screenshots_uploading(&database, &ids)
+}
+
+#[tauri::command]
+pub fn release_screenshot_samples(
+    database: State<'_, Database>,
+    ids: Vec<String>,
+    error: String,
+    retry_after_seconds: Option<i64>,
+) -> Result<(), String> {
+    database::release_screenshots(&database, &ids, &error, retry_after_seconds)
+}
+
+#[tauri::command]
+pub fn apply_screenshot_sync_result(
+    database: State<'_, Database>,
+    result: SyncResult,
+) -> Result<(), String> {
+    let file_paths = database::apply_screenshot_result(&database, &result)?;
+    screenshot::delete_files(&file_paths);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn read_screenshot_file(path: String) -> Result<tauri::ipc::Response, String> {
+    let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
 }

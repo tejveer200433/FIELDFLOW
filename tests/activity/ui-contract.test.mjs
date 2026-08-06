@@ -50,7 +50,7 @@ test("monitoring and empty states are represented", () => {
 
 test("sensitive device data and raw activity values are never rendered", () => {
   assert.doesNotMatch(deviceList, /identifier|token|hash|keystroke|keyboard_event|mouse_event/i);
-  assert.doesNotMatch(page, /keyboardEventCount|mouseEventCount|typedText|clipboard|screenshot/);
+  assert.doesNotMatch(page, /keyboardEventCount|mouseEventCount|typedText|clipboard/);
   assert.match(privacy, /Actual typed characters/);
   assert.match(privacy, /Screenshots/);
 });

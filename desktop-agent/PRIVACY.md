@@ -9,13 +9,15 @@
 - Screen locked state
 - Foreground executable filename stem only, and only when enabled by the active monitoring policy
 - Device agent heartbeat and online/idle state
+- A periodic JPEG screenshot of the primary monitor, only when explicitly enabled by policy (default off), on a policy-configured interval (3-5 minutes), and never while the foreground application matches an administrator-configured exclude list
 
 ## Never collected
 
 - Typed text, keystroke content, key names, scan codes, virtual key codes, or shortcuts
 - Keyboard and mouse event details or mouse-button identities
 - Mouse position, coordinates, paths, or click targets
-- Screenshots, screen video, webcam, or microphone
+- Screen video, webcam, or microphone
+- Screenshots, while collection is disabled (the default) or of an excluded application
 - Clipboard content
 - Window titles, browser URLs, document names, email subjects, or message content
 - Full executable paths, command lines, environment variables, or Windows usernames

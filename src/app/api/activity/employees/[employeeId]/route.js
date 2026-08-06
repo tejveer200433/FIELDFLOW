@@ -1,5 +1,5 @@
 import { assertActivityEmployee, requireActivitySession, resolveActivityScope, ACTIVITY_PERMISSIONS } from "@/lib/activity/auth";
-import { getActivePolicy, getActivityProfiles, mapDevice, mapSession } from "@/lib/activity/data";
+import { getActivePolicy, getActivityProfiles, mapDevice, mapScreenshot, mapSession } from "@/lib/activity/data";
 import { enforceActivityRateLimit } from "@/lib/activity/rateLimit";
 import { ActivityError, activityFailure, activitySuccess } from "@/lib/activity/responses";
 import { deriveActivityStatus } from "@/lib/activity/status.mjs";
@@ -29,7 +29,7 @@ export async function GET(request, { params }) {
 
     const startTime = `${startDate}T00:00:00.000Z`;
     const endTime = `${endDate}T23:59:59.999Z`;
-    const [devicesResult, sessionsResult, activeSessionResult, summariesResult, heartbeatsResult, samplesResult, websitesResult, codingResult, policy] = await Promise.all([
+    const [devicesResult, sessionsResult, activeSessionResult, summariesResult, heartbeatsResult, samplesResult, websitesResult, codingResult, screenshotsResult, policy] = await Promise.all([
       session.client.from("employee_devices")
         .select("id,employee_id,device_name,platform,operating_system_version,agent_version,status,registered_at,last_seen_at,revoked_at")
         .eq("employee_id", employeeId).order("registered_at", { ascending: false }),
@@ -60,9 +60,13 @@ export async function GET(request, { params }) {
         .select("captured_at,ide_name,project_name,duration_seconds")
         .eq("employee_id", employeeId).gte("captured_at", startTime).lte("captured_at", endTime)
         .order("captured_at", { ascending: false }).limit(5000),
+      session.client.from("activity_screenshots")
+        .select("id,captured_at,storage_path,active_application")
+        .eq("employee_id", employeeId).gte("captured_at", startTime).lte("captured_at", endTime)
+        .order("captured_at", { ascending: false }).limit(200),
       getActivePolicy(session.client, { required: false })
     ]);
-    const failure = [devicesResult, sessionsResult, activeSessionResult, summariesResult, heartbeatsResult, samplesResult, websitesResult, codingResult]
+    const failure = [devicesResult, sessionsResult, activeSessionResult, summariesResult, heartbeatsResult, samplesResult, websitesResult, codingResult, screenshotsResult]
       .find(result => result.error);
     if (failure) throw failure.error;
 
@@ -146,6 +150,7 @@ export async function GET(request, { params }) {
         .sort((a, b) => b.sampleCount - a.sampleCount).slice(0, 25),
       codingUsage: Array.from(codingCounts.values())
         .sort((a, b) => b.durationSeconds - a.durationSeconds).slice(0, 25),
+      screenshots: policy?.collect_screenshots ? (screenshotsResult.data || []).map(mapScreenshot) : [],
       recentHeartbeat: heartbeat ? {
         deviceId: heartbeat.device_id,
         trackingSessionId: heartbeat.tracking_session_id,

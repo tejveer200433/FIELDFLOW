@@ -271,12 +271,28 @@ function domainList(value, label, { max = 50 } = {}) {
   return domains;
 }
 
+const appNamePattern = /^[a-z0-9 ._-]+$/;
+
+function appNameList(value, label, { max = 50 } = {}) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) fail(`${label} must be a list of application names.`);
+  const apps = [...new Set(
+    value.map(item => string(item, `${label} entry`, { max: 120 }).toLowerCase())
+  )];
+  if (apps.length > max) fail(`${label} cannot list more than ${max} applications.`);
+  for (const app of apps) {
+    if (!appNamePattern.test(app)) fail(`${label} entry "${app}" has an invalid format.`);
+  }
+  return apps;
+}
+
 export function parsePolicyAdministration(value) {
   const body = object(value, [
     "trackingEnabled", "idleThresholdSeconds", "sampleIntervalSeconds",
     "uploadIntervalSeconds", "offlineSyncLimitSeconds", "heartbeatIntervalSeconds",
     "collectApplicationNames", "requireAcknowledgement", "retentionDays",
-    "websiteBlockingEnabled", "blockedDomains", "collectCodingProjectNames"
+    "websiteBlockingEnabled", "blockedDomains", "collectCodingProjectNames",
+    "collectScreenshots", "screenshotIntervalSeconds", "screenshotExcludedApps"
   ]);
   return {
     trackingEnabled: boolean(body.trackingEnabled, "trackingEnabled", false),
@@ -290,7 +306,25 @@ export function parsePolicyAdministration(value) {
     retentionDays: integer(body.retentionDays, "retentionDays", 1, 3650, 90),
     websiteBlockingEnabled: boolean(body.websiteBlockingEnabled, "websiteBlockingEnabled", false),
     blockedDomains: domainList(body.blockedDomains, "blockedDomains"),
-    collectCodingProjectNames: boolean(body.collectCodingProjectNames, "collectCodingProjectNames", false)
+    collectCodingProjectNames: boolean(body.collectCodingProjectNames, "collectCodingProjectNames", false),
+    collectScreenshots: boolean(body.collectScreenshots, "collectScreenshots", false),
+    screenshotIntervalSeconds: integer(body.screenshotIntervalSeconds, "screenshotIntervalSeconds", 180, 300, 240),
+    screenshotExcludedApps: appNameList(body.screenshotExcludedApps, "screenshotExcludedApps")
+  };
+}
+
+export function parseScreenshotRegistration(value) {
+  const body = object(value, [
+    "trackingSessionId", "localSampleId", "capturedAt", "activeApplication", "byteSize"
+  ]);
+  const localSampleId = string(body.localSampleId, "localSampleId", { max: 120 });
+  if (!localIdPattern.test(localSampleId)) fail("localSampleId has an invalid format.");
+  return {
+    trackingSessionId: uuid(body.trackingSessionId, "trackingSessionId"),
+    localSampleId,
+    capturedAt: timestamp(body.capturedAt, "capturedAt"),
+    activeApplication: optionalString(body.activeApplication, "activeApplication", { max: 120 }),
+    byteSize: integer(body.byteSize, "byteSize", 1, 8388608)
   };
 }
 
@@ -345,6 +379,15 @@ export function parseEmployeeFilters(searchParams, detailed = false) {
     search: optionalString(query.search, "search", { max: 120 }),
     ...pagination(query)
   };
+}
+
+const screenshotPathPattern = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/\d{14}-[0-9a-f]{32}\.jpg$/;
+
+export function parseScreenshotSignedUrlQuery(searchParams) {
+  const query = queryObject(searchParams, ["path"]);
+  const path = string(query.path, "path", { max: 500 });
+  if (!screenshotPathPattern.test(path)) fail("path must be a valid screenshot storage path.");
+  return { path };
 }
 
 export function isUuid(value) {

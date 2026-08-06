@@ -19,7 +19,13 @@ test("admin policy defaults match Phase 1 safe defaults", async () => {
     heartbeatIntervalSeconds: 60,
     collectApplicationNames: false,
     requireAcknowledgement: true,
-    retentionDays: 90
+    retentionDays: 90,
+    websiteBlockingEnabled: false,
+    blockedDomains: [],
+    collectCodingProjectNames: false,
+    collectScreenshots: false,
+    screenshotIntervalSeconds: 240,
+    screenshotExcludedApps: []
   });
 });
 
@@ -31,6 +37,8 @@ test("policy interval and retention ranges match server validation", async () =>
   assert.ok(validatePolicy({ ...valid, heartbeatIntervalSeconds: 3601 }).heartbeatIntervalSeconds);
   assert.ok(validatePolicy({ ...valid, retentionDays: 0 }).retentionDays);
   assert.ok(validatePolicy({ ...valid, idleThresholdSeconds: 30.5 }).idleThresholdSeconds);
+  assert.ok(validatePolicy({ ...valid, screenshotIntervalSeconds: 30 }).screenshotIntervalSeconds);
+  assert.ok(validatePolicy({ ...valid, screenshotIntervalSeconds: 600 }).screenshotIntervalSeconds);
 });
 
 test("new versions report exact changed fields", async () => {
@@ -44,8 +52,18 @@ test("new versions report exact changed fields", async () => {
     heartbeatIntervalSeconds: 60,
     collectApplicationNames: false,
     requireAcknowledgement: true,
-    retentionDays: 90
+    retentionDays: 90,
+    websiteBlockingEnabled: false,
+    blockedDomains: [],
+    collectCodingProjectNames: false,
+    collectScreenshots: false,
+    screenshotIntervalSeconds: 240,
+    screenshotExcludedApps: []
   };
   const changes = policyChanges(current, { ...current, trackingEnabled: true, retentionDays: 60 });
   assert.deepEqual(changes.map(change => change.field), ["trackingEnabled", "retentionDays"]);
+  const withScreenshots = policyChanges(current, {
+    ...current, collectScreenshots: true, screenshotExcludedApps: ["1password"]
+  });
+  assert.deepEqual(withScreenshots.map(change => change.field), ["collectScreenshots", "screenshotExcludedApps"]);
 });

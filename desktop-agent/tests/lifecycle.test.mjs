@@ -47,3 +47,45 @@ test("server reconciliation stops stale local tracking and adopts a valid server
     deviceId: "device-a"
   }), { action: "resume", session: { sessionId: "new", deviceId: "device-a" } });
 });
+
+test("reconciliation auto-restarts tracking once a server-closed session has no local or server session left", () => {
+  assert.deepEqual(reconcileTrackingSession({
+    localSession: null,
+    currentSession: { active: false, session: null },
+    deviceId: "device-a",
+    policy: enabledPolicy,
+    deviceStatus: "active"
+  }), { action: "start", session: null });
+});
+
+test("reconciliation never auto-restarts without an enabled/acknowledged policy or an active device", () => {
+  assert.deepEqual(reconcileTrackingSession({
+    localSession: null,
+    currentSession: { active: false, session: null },
+    deviceId: "device-a"
+  }), { action: "keep", session: null });
+  assert.deepEqual(reconcileTrackingSession({
+    localSession: null,
+    currentSession: { active: false, session: null },
+    deviceId: "device-a",
+    policy: { ...enabledPolicy, trackingEnabled: false },
+    deviceStatus: "active"
+  }), { action: "keep", session: null });
+  assert.deepEqual(reconcileTrackingSession({
+    localSession: null,
+    currentSession: { active: false, session: null },
+    deviceId: "device-a",
+    policy: enabledPolicy,
+    deviceStatus: "pending"
+  }), { action: "keep", session: null });
+});
+
+test("reconciliation never steals another device's active session", () => {
+  assert.deepEqual(reconcileTrackingSession({
+    localSession: null,
+    currentSession: { active: true, session: { sessionId: "new", deviceId: "device-b" } },
+    deviceId: "device-a",
+    policy: enabledPolicy,
+    deviceStatus: "active"
+  }), { action: "keep", session: null });
+});

@@ -9,6 +9,9 @@ export function policyAcknowledgementText(policy) {
     `FieldFlow monitoring policy version ${policy.policyVersion}.`,
     `Tracking is ${policy.trackingEnabled ? "enabled" : "disabled"}.`,
     `Application-name collection is ${policy.collectApplicationNames ? "enabled" : "disabled"}.`,
-    "FieldFlow collects aggregate keyboard and mouse activity counts only. It does not collect typed text, key names or codes, screenshots, clipboard content, window titles, file paths, mouse coordinates, or click targets."
+    policy.collectScreenshots
+      ? `Screenshot capture is enabled, roughly every ${policy.screenshotIntervalSeconds} seconds during an active session, excluding a list of applications your organisation has configured.`
+      : "Screenshot capture is disabled.",
+    "FieldFlow collects aggregate keyboard and mouse activity counts only. It does not collect typed text, key names or codes, clipboard content, window titles, file paths, mouse coordinates, or click targets."
   ].join(" ");
 }

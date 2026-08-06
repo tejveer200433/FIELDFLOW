@@ -12,15 +12,20 @@ export function decideStartupTracking({ policy, deviceStatus, currentSession, de
   return "start";
 }
 
-export function reconcileTrackingSession({ localSession, currentSession, deviceId }) {
+export function reconcileTrackingSession({ localSession, currentSession, deviceId, policy, deviceStatus }) {
   if (localSession) {
     const matches = currentSession?.active
       && currentSession.session?.sessionId === localSession.sessionId
       && currentSession.session?.deviceId === deviceId;
     return matches ? { action: "keep", session: localSession } : { action: "stop", session: null };
   }
-  if (currentSession?.active && currentSession.session?.deviceId === deviceId) {
-    return { action: "resume", session: currentSession.session };
+  if (currentSession?.active) {
+    return currentSession.session?.deviceId === deviceId
+      ? { action: "resume", session: currentSession.session }
+      : { action: "keep", session: null };
+  }
+  if (policyAllowsAutomaticTracking(policy) && deviceStatus === "active") {
+    return { action: "start", session: null };
   }
   return { action: "keep", session: null };
 }

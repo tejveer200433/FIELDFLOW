@@ -76,6 +76,27 @@ pub struct PendingWebsiteSample {
     pub duration_seconds: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct NewScreenshotSample {
+    pub local_sample_id: String,
+    pub tracking_session_id: String,
+    pub captured_at: String,
+    pub file_path: String,
+    pub active_application: Option<String>,
+    pub byte_size: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingScreenshotSample {
+    pub local_sample_id: String,
+    pub tracking_session_id: String,
+    pub captured_at: String,
+    pub file_path: String,
+    pub active_application: Option<String>,
+    pub byte_size: i64,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct FailedSample {
     pub id: String,

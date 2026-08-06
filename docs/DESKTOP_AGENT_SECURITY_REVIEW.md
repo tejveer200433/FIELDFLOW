@@ -11,7 +11,8 @@ Review date: 2026-07-29.
 | Tokens cleared on logout | Pass by code review | Supabase sign-out invokes secure storage removal |
 | Raw device identifier not persisted | Pass | MachineGuid is hashed in Rust; only derived value leaves function; SQLite stores server UUID |
 | Actual keystrokes/key names/key codes | Pass | No hooks or Raw Input; counters remain zero |
-| Clipboard, screenshots, history, titles, paths, coordinates | Pass | No collection API, field, SQLite column, or payload |
+| Clipboard, browser history, window titles, file paths, mouse coordinates | Pass | No collection API, field, SQLite column, or payload |
+| Screenshots | Pass by design | Off by default; capture gated by policy + an on-device exclude-list check before any capture API call; server independently re-validates policy state and the exclude list before accepting an upload; local file deleted on upload confirmation or permanent rejection |
 | Tokens absent from SQLite/logs | Pass | SQLite model has no credential fields; logs accept only fixed event names |
 | Stop/logout collection boundary | Pass after Phase 7 fix | Session ref prevents an in-flight sample from queueing after Stop |
 | Locked-state pause | Pass after Phase 7 fix | Locked samples skip input-counter and application commands |

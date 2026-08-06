@@ -17,6 +17,7 @@ import CurrentTrackingSession from "@/components/activity/CurrentTrackingSession
 import InputActivitySummary from "@/components/activity/InputActivitySummary";
 import MonitoringAcknowledgement from "@/components/activity/MonitoringAcknowledgement";
 import MonitoringPolicyCard from "@/components/activity/MonitoringPolicyCard";
+import ScreenshotActivitySummary from "@/components/activity/ScreenshotActivitySummary";
 import WebsiteUsageSummary from "@/components/activity/WebsiteUsageSummary";
 import { hasPermission } from "@/lib/permissions";
 import {
@@ -191,6 +192,7 @@ export default function EmployeeActivityPage() {
     </div>
     <WebsiteUsageSummary usage={activity?.websiteUsage || []} />
     <CodingActivitySummary enabled={Boolean(policy?.collectCodingProjectNames)} usage={activity?.codingUsage || []} />
+    <ScreenshotActivitySummary enabled={Boolean(policy?.collectScreenshots)} screenshots={activity?.screenshots || []} />
     {policy?.websiteBlockingEnabled && <Suspense fallback={null}><BlockedSiteRequestForm /></Suspense>}
     <section className="card p-5 text-sm text-slate-600">
       <h2 className="font-bold text-slate-900">Heartbeat and sync status</h2>
@@ -198,6 +200,6 @@ export default function EmployeeActivityPage() {
         ? <dl className="mt-3 grid gap-3 sm:grid-cols-3"><div><dt className="text-xs uppercase text-slate-500">Last heartbeat</dt><dd className="mt-1 font-semibold">{formatDateTime(heartbeat.recordedAt)}</dd></div><div><dt className="text-xs uppercase text-slate-500">Agent version</dt><dd className="mt-1 font-semibold">{heartbeat.agentVersion || "Not reported"}</dd></div><div><dt className="text-xs uppercase text-slate-500">Reported state</dt><dd className="mt-1 font-semibold capitalize">{heartbeat.onlineStatus || "Unknown"}</dd></div></dl>
         : <p className="mt-2 text-slate-500">No heartbeat has been received. Start the desktop agent to establish device status.</p>}
     </section>
-    <ActivityPrivacyNotice />
+    <ActivityPrivacyNotice policy={policy} />
   </div>;
 }

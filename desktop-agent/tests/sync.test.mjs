@@ -6,6 +6,7 @@ import {
   reconcileBatch,
   syncPendingCodingSamples,
   syncPendingSamples,
+  syncPendingScreenshotSamples,
   syncPendingWebsiteSamples
 } from "../src/lib/sync.js";
 
@@ -185,4 +186,100 @@ test("coding samples upload through the authenticated agent using their original
     projectName: "fieldflow-nextjs",
     durationSeconds: 60
   }]);
+});
+
+test("a registered screenshot uploads directly to storage and is confirmed", async () => {
+  const calls = [];
+  const queued = [{
+    localSampleId: "shot-one",
+    trackingSessionId: "session-a",
+    capturedAt: "2026-08-06T12:00:00Z",
+    filePath: "C:/tmp/shot-one.jpg",
+    activeApplication: "Code",
+    byteSize: 128000
+  }];
+  const invokeCommand = async (command, payload) => {
+    calls.push({ command, payload });
+    if (command === "pending_screenshot_samples") return queued;
+    if (command === "read_screenshot_file") return new Uint8Array([1, 2, 3]);
+    return null;
+  };
+  const api = {
+    registerScreenshot: async body => {
+      calls.push({ command: "registerScreenshot", payload: body });
+      return { storagePath: "employee/session-a/20260806120000-abc.jpg" };
+    },
+    uploadScreenshot: async body => {
+      calls.push({ command: "uploadScreenshot", payload: body });
+    }
+  };
+
+  const result = await syncPendingScreenshotSamples(api, invokeCommand);
+
+  assert.deepEqual(result, { uploaded: 1, rejected: 0 });
+  assert.deepEqual(calls.find(call => call.command === "mark_screenshot_samples_uploading").payload, {
+    ids: ["shot-one"]
+  });
+  const upload = calls.find(call => call.command === "uploadScreenshot").payload;
+  assert.equal(upload.storagePath, "employee/session-a/20260806120000-abc.jpg");
+  const confirm = calls.find(call => call.command === "apply_screenshot_sync_result").payload;
+  assert.deepEqual(confirm.result, { confirmedIds: ["shot-one"], failed: [] });
+});
+
+test("a network failure during screenshot upload releases the sample for retry without deleting its file", async () => {
+  const calls = [];
+  const queued = [{
+    localSampleId: "shot-two",
+    trackingSessionId: "session-a",
+    capturedAt: "2026-08-06T12:00:00Z",
+    filePath: "C:/tmp/shot-two.jpg",
+    activeApplication: null,
+    byteSize: 50000
+  }];
+  const invokeCommand = async (command, payload) => {
+    calls.push({ command, payload });
+    if (command === "pending_screenshot_samples") return queued;
+    return null;
+  };
+  const networkError = Object.assign(new Error("offline"), { code: "NETWORK_ERROR" });
+  const api = {
+    registerScreenshot: async () => { throw networkError; },
+    uploadScreenshot: async () => {}
+  };
+
+  await assert.rejects(syncPendingScreenshotSamples(api, invokeCommand), networkError);
+
+  const release = calls.find(call => call.command === "release_screenshot_samples");
+  assert.ok(release, "expected a release_screenshot_samples call");
+  assert.deepEqual(release.payload.ids, ["shot-two"]);
+  assert.ok(!calls.some(call => call.command === "apply_screenshot_sync_result"));
+});
+
+test("a policy rejection (excluded application or disabled collection) is a permanent failure, not a retry", async () => {
+  const calls = [];
+  const queued = [{
+    localSampleId: "shot-three",
+    trackingSessionId: "session-a",
+    capturedAt: "2026-08-06T12:00:00Z",
+    filePath: "C:/tmp/shot-three.jpg",
+    activeApplication: "banking-app",
+    byteSize: 90000
+  }];
+  const invokeCommand = async (command, payload) => {
+    calls.push({ command, payload });
+    if (command === "pending_screenshot_samples") return queued;
+    return null;
+  };
+  const excludedError = Object.assign(new Error("excluded"), { code: "EXCLUDED_APPLICATION" });
+  const api = {
+    registerScreenshot: async () => { throw excludedError; },
+    uploadScreenshot: async () => {}
+  };
+
+  const result = await syncPendingScreenshotSamples(api, invokeCommand);
+
+  assert.deepEqual(result, { uploaded: 0, rejected: 1 });
+  const confirm = calls.find(call => call.command === "apply_screenshot_sync_result").payload;
+  assert.deepEqual(confirm.result, { confirmedIds: [], failed: [{ id: "shot-three", error: "EXCLUDED_APPLICATION" }] });
+  assert.ok(!calls.some(call => call.command === "release_screenshot_samples"));
 });

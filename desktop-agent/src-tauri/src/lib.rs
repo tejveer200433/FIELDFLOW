@@ -5,6 +5,7 @@ mod input;
 mod logging;
 mod models;
 mod platform;
+mod screenshot;
 mod secure_store;
 
 use tauri::{
@@ -73,6 +74,13 @@ pub fn run() {
                 database::Database::open(&data_dir.join("activity-queue.db"))
                     .map_err(std::io::Error::other)?,
             );
+            {
+                let database = app.state::<database::Database>();
+                if let Err(error) = screenshot::sweep_orphaned_files(app.handle(), &database) {
+                    let _ = logging::write(app.handle(), "screenshot_sweep_failed", "warn", false);
+                    let _ = error;
+                }
+            }
             if browser_bridge::start(app.handle().clone()).is_err() {
                 let _ = logging::write(app.handle(), "browser_bridge_start_failed", "warn", false);
             }
@@ -167,6 +175,12 @@ pub fn run() {
             commands::mark_coding_samples_uploading,
             commands::release_coding_samples,
             commands::apply_coding_sync_result,
+            commands::capture_screenshot,
+            commands::pending_screenshot_samples,
+            commands::mark_screenshot_samples_uploading,
+            commands::release_screenshot_samples,
+            commands::apply_screenshot_sync_result,
+            commands::read_screenshot_file,
             commands::recover_uploading_samples,
             commands::pending_sample_count,
             commands::set_agent_state,

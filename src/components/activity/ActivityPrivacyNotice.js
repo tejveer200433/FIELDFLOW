@@ -1,16 +1,23 @@
 import { Shield } from "lucide-react";
 
-const collected = [
+const baseCollected = [
   "Work-session start and stop times", "Active and idle duration", "Keyboard activity counts",
   "Mouse activity counts", "Active application name when enabled", "Active website hostname through the managed extension", "Device online status", "Agent version"
 ];
-const notCollected = [
+const baseNotCollected = [
   "Actual typed characters", "Passwords", "Key names or key codes", "Clipboard contents",
-  "Mouse coordinates", "Personal message contents", "Screenshots", "Full browser URLs and page content",
+  "Mouse coordinates", "Personal message contents", "Full browser URLs and page content",
   "Window titles", "Full file paths"
 ];
 
-export default function ActivityPrivacyNotice() {
+export default function ActivityPrivacyNotice({ policy } = {}) {
+  const screenshotsEnabled = Boolean(policy?.collectScreenshots);
+  const collected = screenshotsEnabled
+    ? [...baseCollected, `Periodic screenshots (every ~${policy.screenshotIntervalSeconds}s), excluding a configured application list`]
+    : baseCollected;
+  const notCollected = screenshotsEnabled
+    ? baseNotCollected
+    : [...baseNotCollected, "Screenshots"];
   return <details className="card group p-5 sm:p-6">
     <summary className="flex cursor-pointer list-none items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-full bg-blue-50 text-blue-600"><Shield className="h-5 w-5" /></span><div><h2 className="font-bold">What activity tracking records</h2><p className="text-sm text-slate-500">Open this notice to review collected and excluded information.</p></div><span className="ml-auto text-slate-400 group-open:rotate-180">⌄</span></summary>
     <div className="mt-5 grid gap-5 md:grid-cols-2">

@@ -8,6 +8,8 @@ import {
   parsePolicyAcknowledgement,
   parsePolicyAdministration,
   parseSampleBatch,
+  parseScreenshotRegistration,
+  parseScreenshotSignedUrlQuery,
   parseSessionStart,
   parseSessionStop,
   parseTeamFilters
@@ -130,7 +132,58 @@ test("policy administration applies safe defaults and bounds", () => {
   const policy = parsePolicyAdministration({ trackingEnabled: false });
   assert.equal(policy.sampleIntervalSeconds, 60);
   assert.equal(policy.trackingEnabled, false);
+  assert.equal(policy.collectScreenshots, false);
+  assert.equal(policy.screenshotIntervalSeconds, 240);
+  assert.deepEqual(policy.screenshotExcludedApps, []);
   assert.throws(() => parsePolicyAdministration({ retentionDays: 10000 }), ActivityValidationError);
+});
+
+test("policy administration bounds the screenshot interval and exclude list", () => {
+  assert.throws(() => parsePolicyAdministration({ screenshotIntervalSeconds: 30 }), ActivityValidationError);
+  assert.throws(() => parsePolicyAdministration({ screenshotIntervalSeconds: 600 }), ActivityValidationError);
+  const policy = parsePolicyAdministration({
+    collectScreenshots: true,
+    screenshotIntervalSeconds: 180,
+    screenshotExcludedApps: [" 1Password ", "1password", "banking-app"]
+  });
+  assert.equal(policy.collectScreenshots, true);
+  assert.equal(policy.screenshotIntervalSeconds, 180);
+  assert.deepEqual(policy.screenshotExcludedApps, ["1password", "banking-app"]);
+  assert.throws(() => parsePolicyAdministration({ screenshotExcludedApps: ["bad<name>"] }), ActivityValidationError);
+});
+
+test("screenshot registration requires a well-formed local sample id and bounded byte size", () => {
+  const registration = parseScreenshotRegistration({
+    trackingSessionId: sessionId,
+    localSampleId: "shot-1",
+    capturedAt: "2026-08-06T12:00:00Z",
+    activeApplication: "Code",
+    byteSize: 128000
+  });
+  assert.equal(registration.trackingSessionId, sessionId);
+  assert.equal(registration.byteSize, 128000);
+  assert.throws(
+    () => parseScreenshotRegistration({
+      trackingSessionId: sessionId, localSampleId: "bad id!", capturedAt: "2026-08-06T12:00:00Z", byteSize: 1
+    }),
+    ActivityValidationError
+  );
+  assert.throws(
+    () => parseScreenshotRegistration({
+      trackingSessionId: sessionId, localSampleId: "shot-1", capturedAt: "2026-08-06T12:00:00Z", byteSize: 9000000
+    }),
+    ActivityValidationError
+  );
+});
+
+test("screenshot signed-url requests only accept the expected storage path shape", () => {
+  const validPath = `${deviceId}/${sessionId}/20260806120000-${"a".repeat(32)}.jpg`;
+  const parsed = parseScreenshotSignedUrlQuery(new URLSearchParams({ path: validPath }));
+  assert.equal(parsed.path, validPath);
+  assert.throws(
+    () => parseScreenshotSignedUrlQuery(new URLSearchParams({ path: "../etc/passwd" })),
+    ActivityValidationError
+  );
 });
 
 test("team filters reject unknown query keys", () => {

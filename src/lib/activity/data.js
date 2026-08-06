@@ -1,6 +1,6 @@
 import { ActivityError } from "@/lib/activity/responses";
 
-export const policySelect = "id,policy_version,is_active,tracking_enabled,idle_threshold_seconds,sample_interval_seconds,upload_interval_seconds,offline_sync_limit_seconds,heartbeat_interval_seconds,collect_application_names,require_acknowledgement,retention_days,website_blocking_enabled,blocked_domains,collect_coding_project_names,created_at,updated_at";
+export const policySelect = "id,policy_version,is_active,tracking_enabled,idle_threshold_seconds,sample_interval_seconds,upload_interval_seconds,offline_sync_limit_seconds,heartbeat_interval_seconds,collect_application_names,require_acknowledgement,retention_days,website_blocking_enabled,blocked_domains,collect_coding_project_names,collect_screenshots,screenshot_interval_seconds,screenshot_excluded_apps,created_at,updated_at";
 
 export function mapPolicy(row) {
   if (!row) return null;
@@ -18,7 +18,19 @@ export function mapPolicy(row) {
     retentionDays: row.retention_days,
     websiteBlockingEnabled: row.website_blocking_enabled,
     blockedDomains: row.blocked_domains || [],
-    collectCodingProjectNames: row.collect_coding_project_names
+    collectCodingProjectNames: row.collect_coding_project_names,
+    collectScreenshots: row.collect_screenshots,
+    screenshotIntervalSeconds: row.screenshot_interval_seconds,
+    screenshotExcludedApps: row.screenshot_excluded_apps || []
+  };
+}
+
+export function mapScreenshot(row) {
+  return {
+    id: row.id,
+    capturedAt: row.captured_at,
+    storagePath: row.storage_path,
+    activeApplication: row.active_application
   };
 }
 
@@ -184,7 +196,20 @@ export function throwActivityDatabaseError(error) {
     ["Task is not assigned", "TASK_OUT_OF_SCOPE", 403],
     ["Tracking session does not match", "SESSION_DEVICE_MISMATCH", 409],
     ["Heartbeat sent too frequently", "HEARTBEAT_TOO_FREQUENT", 429],
-    ["administration required", "ACCESS_DENIED", 403]
+    ["administration required", "ACCESS_DENIED", 403],
+    ["Coding activity collection is disabled", "CODING_COLLECTION_DISABLED", 409],
+    ["Screenshot collection is disabled", "SCREENSHOT_COLLECTION_DISABLED", 409],
+    ["Screenshot application is excluded by policy", "EXCLUDED_APPLICATION", 409],
+    ["Tracking session is cancelled", "SESSION_NOT_ACTIVE", 409],
+    ["Tracking session is unavailable", "SESSION_NOT_ACTIVE", 409],
+    ["Tracking session is not active", "SESSION_NOT_ACTIVE", 409],
+    ["Tracking session does not match device", "SESSION_DEVICE_MISMATCH", 409],
+    ["Session monitoring policy not found", "POLICY_VERSION_NOT_FOUND", 404],
+    ["timestamp is in the future", "FUTURE_TIMESTAMP", 400],
+    ["predates session start", "BEFORE_SESSION_START", 400],
+    ["expired for offline sync", "OFFLINE_SYNC_EXPIRED", 409],
+    ["Invalid screenshot size", "INVALID_SAMPLE_VALUE", 400],
+    ["Invalid local sample id", "INVALID_LOCAL_SAMPLE_ID", 400]
   ];
   const match = mappings.find(([fragment]) => message.toLowerCase().includes(fragment.toLowerCase()));
   if (match) throw new ActivityError(match[1], match[0], match[2], match[2] === 429 ? { retryAfterSeconds: 5 } : null);

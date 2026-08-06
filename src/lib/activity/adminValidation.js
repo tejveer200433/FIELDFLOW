@@ -4,7 +4,8 @@ export const policyRanges = {
   uploadIntervalSeconds: [30, 86400],
   offlineSyncLimitSeconds: [0, 2592000],
   heartbeatIntervalSeconds: [15, 3600],
-  retentionDays: [1, 3650]
+  retentionDays: [1, 3650],
+  screenshotIntervalSeconds: [180, 300]
 };
 
 export const policyFields = [
@@ -19,7 +20,10 @@ export const policyFields = [
   "retentionDays",
   "websiteBlockingEnabled",
   "blockedDomains",
-  "collectCodingProjectNames"
+  "collectCodingProjectNames",
+  "collectScreenshots",
+  "screenshotIntervalSeconds",
+  "screenshotExcludedApps"
 ];
 
 export function policyFormValues(policy) {
@@ -35,7 +39,10 @@ export function policyFormValues(policy) {
     retentionDays: Number(policy?.retentionDays ?? 90),
     websiteBlockingEnabled: Boolean(policy?.websiteBlockingEnabled),
     blockedDomains: Array.isArray(policy?.blockedDomains) ? policy.blockedDomains : [],
-    collectCodingProjectNames: Boolean(policy?.collectCodingProjectNames)
+    collectCodingProjectNames: Boolean(policy?.collectCodingProjectNames),
+    collectScreenshots: Boolean(policy?.collectScreenshots),
+    screenshotIntervalSeconds: Number(policy?.screenshotIntervalSeconds ?? 240),
+    screenshotExcludedApps: Array.isArray(policy?.screenshotExcludedApps) ? policy.screenshotExcludedApps : []
   };
 }
 

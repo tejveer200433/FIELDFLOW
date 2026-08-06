@@ -87,9 +87,15 @@ function PolicyConsent({ policy, onAccept, onSignOut }) {
         <h1>Your consent is required</h1>
         <p>{text}</p>
         <div className="notice">
-          <strong>Never collected:</strong> typed text, key names or codes, screenshots, clipboard content,
+          <strong>Never collected:</strong> typed text, key names or codes, clipboard content,
           window titles, document names, full executable paths, mouse coordinates, or usernames.
         </div>
+        {policy.collectScreenshots && (
+          <div className="notice">
+            <strong>Screenshot capture is enabled</strong> by your organisation: roughly every {policy.screenshotIntervalSeconds} seconds
+            during an active session, excluding a configured list of applications.
+          </div>
+        )}
         <label className="check">
           <input type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} />
           I understand and acknowledge policy version {policy.policyVersion}.
@@ -126,6 +132,7 @@ export default function App() {
   const deviceId = device?.deviceId;
   const timers = useRef([]);
   const sampling = useRef(false);
+  const screenshotting = useRef(false);
   const syncing = useRef(false);
   const trackingSessionId = useRef(null);
   const previousOnline = useRef(navigator.onLine);
@@ -176,6 +183,10 @@ export default function App() {
           blockedDomains: result.websiteBlockingEnabled ? (result.blockedDomains || []) : [],
           overrides: result.activeOverrides || []
         })
+      }).catch(() => null);
+      await invoke("set_agent_state", {
+        key: "screenshot_excluded_apps_json",
+        value: JSON.stringify(result.collectScreenshots ? (result.screenshotExcludedApps || []) : [])
       }).catch(() => null);
       return result;
     } catch (heartbeatError) {
@@ -454,7 +465,9 @@ export default function App() {
           ? { sessionId: trackingSessionId.current }
           : null,
         currentSession,
-        deviceId
+        deviceId,
+        policy,
+        deviceStatus: device?.status
       });
       if (resolution.action === "stop") {
         trackingSessionId.current = null;
@@ -473,6 +486,25 @@ export default function App() {
         await invoke("set_input_collection_enabled", { enabled: true });
         setError("");
         await agentLog("tracking_reconciled_resumed");
+      } else if (resolution.action === "start") {
+        let started;
+        try {
+          started = await api.startSession({ deviceId, projectId: null, taskId: null, source: "agent" });
+        } catch (startError) {
+          if (startError.code !== "ACTIVE_SESSION_EXISTS") throw startError;
+          const latest = await api.getCurrentSession();
+          if (!latest.active || latest.session?.deviceId !== deviceId) throw startError;
+          started = latest.session;
+        }
+        await invoke("set_agent_state", { key: "tracking_active", value: "true" });
+        await invoke("set_agent_state", { key: "tracking_session_id", value: started.sessionId });
+        trackingSessionId.current = started.sessionId;
+        setSession(started);
+        setError("");
+        await invoke("set_input_collection_enabled", { enabled: true }).catch(inputError => {
+          setError(`Input activity counting unavailable: ${inputError}`);
+        });
+        await agentLog("tracking_reconciled_started");
       }
     } catch (reconcileError) {
       setError(`Session check delayed: ${reconcileError.message}`);
@@ -480,7 +512,7 @@ export default function App() {
     } finally {
       reconciling.current = false;
     }
-  }, [account, api, deviceId, online]);
+  }, [account, api, device, deviceId, online, policy]);
 
   useEffect(() => {
     if (online && !previousOnline.current) {
@@ -541,6 +573,20 @@ export default function App() {
           sampling.current = false;
         }
       }, Math.max(10, policy.sampleIntervalSeconds || 60) * 1000));
+    }
+    if (session && policy.trackingEnabled && policy.collectScreenshots) {
+      timers.current.push(window.setInterval(async () => {
+        if (screenshotting.current) return;
+        screenshotting.current = true;
+        try {
+          const captured = await invoke("capture_screenshot", { sessionId: session.sessionId });
+          if (captured && trackingSessionId.current === session.sessionId) await refreshQueue();
+        } catch (screenshotError) {
+          setError(`Screenshot capture paused: ${screenshotError}`);
+        } finally {
+          screenshotting.current = false;
+        }
+      }, Math.max(180, policy.screenshotIntervalSeconds || 240) * 1000));
     }
     return clearTimers;
   }, [account, clearTimers, deviceId, online, performSync, policy, reconcileWithServer, refreshQueue, sendHeartbeat, session]);

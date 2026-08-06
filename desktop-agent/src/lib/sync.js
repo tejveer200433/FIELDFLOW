@@ -170,13 +170,67 @@ export async function syncPendingCodingSamples(api, invokeCommand = invoke) {
   return totals;
 }
 
+async function syncScreenshotSample(api, sample, invokeCommand) {
+  await invokeCommand("mark_screenshot_samples_uploading", { ids: [sample.localSampleId] });
+  try {
+    const registration = await api.registerScreenshot({
+      trackingSessionId: sample.trackingSessionId,
+      localSampleId: sample.localSampleId,
+      capturedAt: normalizeUtcTimestamp(sample.capturedAt),
+      activeApplication: sample.activeApplication,
+      byteSize: sample.byteSize
+    });
+    const bytes = await invokeCommand("read_screenshot_file", { path: sample.filePath });
+    await api.uploadScreenshot({ storagePath: registration.storagePath, bytes });
+    await invokeCommand("apply_screenshot_sync_result", {
+      result: { confirmedIds: [sample.localSampleId], failed: [] }
+    });
+    return { uploaded: 1, rejected: 0 };
+  } catch (error) {
+    // A rejection driven by policy state (disabled, or this exact app is excluded) will never
+    // succeed on retry -- treat it as a permanent failure so the local file is cleaned up,
+    // rather than retrying forever. Anything else (network, timeout) is retryable.
+    if (error.code === "EXCLUDED_APPLICATION" || error.code === "SCREENSHOT_COLLECTION_DISABLED") {
+      await invokeCommand("apply_screenshot_sync_result", {
+        result: { confirmedIds: [], failed: [{ id: sample.localSampleId, error: error.code }] }
+      });
+      return { uploaded: 0, rejected: 1 };
+    }
+    await invokeCommand("release_screenshot_samples", {
+      ids: [sample.localSampleId],
+      error: error.code || "NETWORK_ERROR",
+      retryAfterSeconds: error.retryAfterSeconds || null
+    });
+    throw error;
+  }
+}
+
+export async function syncPendingScreenshotSamples(api, invokeCommand = invoke) {
+  const samples = await invokeCommand("pending_screenshot_samples", { limit: 20 });
+  if (!samples.length) return { uploaded: 0, rejected: 0 };
+  const totals = { uploaded: 0, rejected: 0 };
+  const errors = [];
+  for (const sample of samples) {
+    try {
+      const result = await syncScreenshotSample(api, sample, invokeCommand);
+      totals.uploaded += result.uploaded;
+      totals.rejected += result.rejected;
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length) throw errors[0];
+  return totals;
+}
+
 export async function syncAllPending(api, deviceId, invokeCommand = invoke) {
   const totals = { uploaded: 0, rejected: 0 };
   const errors = [];
   for (const operation of [
     () => syncPendingSamples(api, deviceId, invokeCommand),
     () => syncPendingWebsiteSamples(api, invokeCommand),
-    () => syncPendingCodingSamples(api, invokeCommand)
+    () => syncPendingCodingSamples(api, invokeCommand),
+    () => syncPendingScreenshotSamples(api, invokeCommand)
   ]) {
     try {
       const result = await operation();

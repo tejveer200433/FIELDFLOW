@@ -39,7 +39,10 @@ export async function POST(request) {
       trackingEnabled: Boolean(policy?.tracking_enabled),
       websiteBlockingEnabled: Boolean(policy?.website_blocking_enabled),
       blockedDomains: policy?.website_blocking_enabled ? (policy?.blocked_domains || []) : [],
-      activeOverrides
+      activeOverrides,
+      collectScreenshots: Boolean(policy?.collect_screenshots),
+      screenshotIntervalSeconds: policy?.screenshot_interval_seconds || 240,
+      screenshotExcludedApps: policy?.collect_screenshots ? (policy?.screenshot_excluded_apps || []) : []
     }, { status: 201 });
   } catch (error) {
     return activityFailure(error);

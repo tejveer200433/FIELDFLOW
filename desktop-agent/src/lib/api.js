@@ -97,6 +97,17 @@ export function createActivityApi({ baseUrl, supabase, fetchImpl = fetch }) {
     ingestCoding: body => request("/api/activity/coding/ingest", {
       method: "POST", body: JSON.stringify(body)
     }),
+    registerScreenshot: body => request("/api/activity/screenshots/register", {
+      method: "POST", body: JSON.stringify(body)
+    }),
+    uploadScreenshot: async ({ storagePath, bytes }) => {
+      const { error } = await supabase.storage
+        .from("activity-screenshots")
+        .upload(storagePath, bytes, { contentType: "image/jpeg", upsert: false });
+      if (error) {
+        throw new ActivityApiError(error.message || "The screenshot upload failed.", "STORAGE_UPLOAD_FAILED", 0);
+      }
+    },
     heartbeat: body => request("/api/activity/heartbeat", {
       method: "POST", body: JSON.stringify(body)
     })

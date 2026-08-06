@@ -4,8 +4,8 @@ use chrono::{SecondsFormat, Utc};
 use rusqlite::{params, params_from_iter, Connection};
 
 use crate::models::{
-    NewCodingSample, NewSample, NewWebsiteSample, PendingCodingSample, PendingSample,
-    PendingWebsiteSample, SyncResult,
+    NewCodingSample, NewSample, NewScreenshotSample, NewWebsiteSample, PendingCodingSample,
+    PendingSample, PendingScreenshotSample, PendingWebsiteSample, SyncResult,
 };
 
 /// Every stored/compared timestamp in this file must use this exact format (millisecond
@@ -87,6 +87,25 @@ impl Database {
              );
              CREATE INDEX IF NOT EXISTS pending_coding_samples_sync_idx
                ON pending_coding_samples (
+                 tracking_session_id, sync_state, permanent_failure,
+                 next_attempt_at, captured_at
+               );
+             CREATE TABLE IF NOT EXISTS pending_screenshot_samples (
+               local_sample_id TEXT PRIMARY KEY,
+               tracking_session_id TEXT NOT NULL,
+               captured_at TEXT NOT NULL,
+               file_path TEXT NOT NULL,
+               active_application TEXT,
+               byte_size INTEGER NOT NULL CHECK (byte_size > 0 AND byte_size <= 8388608),
+               sync_state TEXT NOT NULL DEFAULT 'pending' CHECK (sync_state IN ('pending', 'uploading', 'uploaded', 'failed')),
+               permanent_failure INTEGER NOT NULL DEFAULT 0 CHECK (permanent_failure IN (0, 1)),
+               attempt_count INTEGER NOT NULL DEFAULT 0,
+               next_attempt_at TEXT NOT NULL,
+               last_error TEXT,
+               created_at TEXT NOT NULL
+             );
+             CREATE INDEX IF NOT EXISTS pending_screenshot_samples_sync_idx
+               ON pending_screenshot_samples (
                  tracking_session_id, sync_state, permanent_failure,
                  next_attempt_at, captured_at
                );
@@ -348,6 +367,215 @@ pub fn pending_codings(
                 duration_seconds: row.get(5)?,
             })
         })
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
+}
+
+pub fn pending_screenshot_count(database: &Database) -> Result<i64, String> {
+    database
+        .0
+        .lock()
+        .map_err(|_| "Database lock failed.".to_string())?
+        .query_row(
+            "SELECT COUNT(*) FROM pending_screenshot_samples WHERE sync_state != 'uploaded' AND permanent_failure = 0",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())
+}
+
+pub fn enqueue_screenshot(database: &Database, sample: &NewScreenshotSample) -> Result<(), String> {
+    let now = now_rfc3339();
+    let connection = database
+        .0
+        .lock()
+        .map_err(|_| "Database lock failed.".to_string())?;
+    connection
+        .execute(
+            "INSERT OR IGNORE INTO pending_screenshot_samples (
+               local_sample_id, tracking_session_id, captured_at, file_path,
+               active_application, byte_size, next_attempt_at, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+            params![
+                sample.local_sample_id,
+                sample.tracking_session_id,
+                sample.captured_at,
+                sample.file_path,
+                sample.active_application,
+                sample.byte_size,
+                now
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+pub fn pending_screenshots(
+    database: &Database,
+    limit: u32,
+) -> Result<Vec<PendingScreenshotSample>, String> {
+    let connection = database
+        .0
+        .lock()
+        .map_err(|_| "Database lock failed.".to_string())?;
+    let mut statement = connection
+        .prepare(
+            "SELECT local_sample_id, tracking_session_id, captured_at, file_path,
+                active_application, byte_size
+         FROM pending_screenshot_samples
+         WHERE sync_state IN ('pending', 'failed')
+           AND permanent_failure = 0
+           AND next_attempt_at <= ?1
+         ORDER BY captured_at ASC LIMIT ?2",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(params![now_rfc3339(), limit.min(100)], |row| {
+            Ok(PendingScreenshotSample {
+                local_sample_id: row.get(0)?,
+                tracking_session_id: row.get(1)?,
+                captured_at: row.get(2)?,
+                file_path: row.get(3)?,
+                active_application: row.get(4)?,
+                byte_size: row.get(5)?,
+            })
+        })
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
+}
+
+pub fn mark_screenshots_uploading(database: &Database, ids: &[String]) -> Result<(), String> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let query = format!(
+        "UPDATE pending_screenshot_samples SET sync_state = 'uploading' WHERE local_sample_id IN ({})",
+        placeholders(ids.len())
+    );
+    database
+        .0
+        .lock()
+        .map_err(|_| "Database lock failed.".to_string())?
+        .execute(&query, params_from_iter(ids))
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+pub fn release_screenshots(
+    database: &Database,
+    ids: &[String],
+    error: &str,
+    retry_after_seconds: Option<i64>,
+) -> Result<(), String> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let connection = database
+        .0
+        .lock()
+        .map_err(|_| "Database lock failed.".to_string())?;
+    for id in ids {
+        let attempt: i64 = connection
+            .query_row(
+                "SELECT attempt_count FROM pending_screenshot_samples WHERE local_sample_id = ?1",
+                [id],
+                |row| row.get(0),
+            )
+            .unwrap_or(0)
+            + 1;
+        let delay =
+            retry_delay_seconds(attempt).max(retry_after_seconds.unwrap_or(0).clamp(0, 86_400));
+        let next = Utc::now() + chrono::Duration::seconds(delay);
+        connection
+            .execute(
+                "UPDATE pending_screenshot_samples SET sync_state = 'failed', attempt_count = ?2,
+             next_attempt_at = ?3, last_error = ?4 WHERE local_sample_id = ?1",
+                params![
+                    id,
+                    attempt,
+                    rfc3339(next),
+                    error.chars().take(160).collect::<String>()
+                ],
+            )
+            .map_err(|database_error| database_error.to_string())?;
+    }
+    Ok(())
+}
+
+/// Unlike the other `apply_*_result` functions, this returns the on-disk `file_path` of every
+/// confirmed and permanently-failed row so the caller can delete those files *after* this lock
+/// is released -- file I/O must never happen while holding the connection mutex.
+pub fn apply_screenshot_result(database: &Database, result: &SyncResult) -> Result<Vec<String>, String> {
+    let mut connection = database
+        .0
+        .lock()
+        .map_err(|_| "Database lock failed.".to_string())?;
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    let mut file_paths = Vec::new();
+    for id in &result.confirmed_ids {
+        if let Ok(path) = transaction.query_row(
+            "SELECT file_path FROM pending_screenshot_samples WHERE local_sample_id = ?1",
+            [id],
+            |row| row.get::<_, String>(0),
+        ) {
+            file_paths.push(path);
+        }
+        transaction
+            .execute(
+                "UPDATE pending_screenshot_samples SET sync_state = 'uploaded', last_error = NULL,
+             next_attempt_at = ?2 WHERE local_sample_id = ?1",
+                params![id, now_rfc3339()],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    for failed in &result.failed {
+        if let Ok(path) = transaction.query_row(
+            "SELECT file_path FROM pending_screenshot_samples WHERE local_sample_id = ?1",
+            [&failed.id],
+            |row| row.get::<_, String>(0),
+        ) {
+            file_paths.push(path);
+        }
+        transaction
+            .execute(
+                "UPDATE pending_screenshot_samples SET sync_state = 'failed', permanent_failure = 1,
+             attempt_count = attempt_count + 1, next_attempt_at = ?2, last_error = ?3
+             WHERE local_sample_id = ?1",
+                params![
+                    failed.id,
+                    now_rfc3339(),
+                    failed.error.chars().take(160).collect::<String>()
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    transaction
+        .execute(
+            "DELETE FROM pending_screenshot_samples WHERE sync_state = 'uploaded' AND next_attempt_at < ?1",
+            [rfc3339(Utc::now() - chrono::Duration::hours(24))],
+        )
+        .map_err(|error| error.to_string())?;
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(file_paths)
+}
+
+/// Every screenshot file path currently referenced by the local queue, regardless of
+/// `sync_state`. Used to identify orphaned files on disk (written before a crash, with no
+/// surviving row) without ever deleting a file the queue still knows about.
+pub fn all_screenshot_file_paths(database: &Database) -> Result<Vec<String>, String> {
+    let connection = database
+        .0
+        .lock()
+        .map_err(|_| "Database lock failed.".to_string())?;
+    let mut statement = connection
+        .prepare("SELECT file_path FROM pending_screenshot_samples")
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(0))
         .map_err(|error| error.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())
@@ -664,7 +892,8 @@ pub fn recover(database: &Database) -> Result<(), String> {
         .execute_batch(
             "UPDATE pending_samples SET sync_state = 'pending' WHERE sync_state = 'uploading';
              UPDATE pending_website_samples SET sync_state = 'pending' WHERE sync_state = 'uploading';
-             UPDATE pending_coding_samples SET sync_state = 'pending' WHERE sync_state = 'uploading';",
+             UPDATE pending_coding_samples SET sync_state = 'pending' WHERE sync_state = 'uploading';
+             UPDATE pending_screenshot_samples SET sync_state = 'pending' WHERE sync_state = 'uploading';",
         )
         .map_err(|error| error.to_string())?;
     Ok(())
@@ -679,7 +908,8 @@ pub fn count(database: &Database) -> Result<i64, String> {
             "SELECT
                (SELECT COUNT(*) FROM pending_samples WHERE sync_state != 'uploaded' AND permanent_failure = 0) +
                (SELECT COUNT(*) FROM pending_website_samples WHERE sync_state != 'uploaded' AND permanent_failure = 0) +
-               (SELECT COUNT(*) FROM pending_coding_samples WHERE sync_state != 'uploaded' AND permanent_failure = 0)",
+               (SELECT COUNT(*) FROM pending_coding_samples WHERE sync_state != 'uploaded' AND permanent_failure = 0) +
+               (SELECT COUNT(*) FROM pending_screenshot_samples WHERE sync_state != 'uploaded' AND permanent_failure = 0)",
             [],
             |row| row.get(0),
         )
@@ -719,10 +949,12 @@ pub fn get_state(database: &Database, key: &str) -> Result<Option<String>, Strin
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_coding_result, apply_result, count, enqueue, enqueue_coding, mark_coding_uploading,
-        mark_uploading, pending, pending_codings, recover, retry_delay_seconds, Database,
+        all_screenshot_file_paths, apply_coding_result, apply_result, apply_screenshot_result,
+        count, enqueue, enqueue_coding, enqueue_screenshot, mark_coding_uploading,
+        mark_screenshots_uploading, mark_uploading, pending, pending_codings,
+        pending_screenshot_count, pending_screenshots, recover, retry_delay_seconds, Database,
     };
-    use crate::models::{NewCodingSample, NewSample, SyncResult};
+    use crate::models::{NewCodingSample, NewSample, NewScreenshotSample, SyncResult};
 
     #[test]
     fn retry_delay_is_bounded() {
@@ -795,5 +1027,61 @@ mod tests {
         )
         .unwrap();
         assert_eq!(count(&database).unwrap(), 0);
+    }
+
+    fn screenshot_sample(id: &str, file_path: &str) -> NewScreenshotSample {
+        NewScreenshotSample {
+            local_sample_id: id.to_string(),
+            tracking_session_id: "session".to_string(),
+            captured_at: "2026-08-06T12:00:00Z".to_string(),
+            file_path: file_path.to_string(),
+            active_application: Some("code".to_string()),
+            byte_size: 128_000,
+        }
+    }
+
+    #[test]
+    fn screenshot_queue_recovers_uploading_rows_and_retains_server_confirmation() {
+        let database = Database::memory().unwrap();
+        enqueue_screenshot(&database, &screenshot_sample("shot-1", "C:/tmp/shot-1.jpg")).unwrap();
+        assert_eq!(pending_screenshot_count(&database).unwrap(), 1);
+        mark_screenshots_uploading(&database, &["shot-1".to_string()]).unwrap();
+        recover(&database).unwrap();
+        let queued = pending_screenshots(&database, 100).unwrap();
+        assert_eq!(queued.len(), 1);
+        assert_eq!(queued[0].file_path, "C:/tmp/shot-1.jpg");
+        apply_screenshot_result(
+            &database,
+            &SyncResult {
+                confirmed_ids: vec!["shot-1".to_string()],
+                failed: vec![],
+            },
+        )
+        .unwrap();
+        assert_eq!(pending_screenshot_count(&database).unwrap(), 0);
+    }
+
+    #[test]
+    fn apply_screenshot_result_returns_file_paths_for_confirmed_and_permanently_failed_rows() {
+        let database = Database::memory().unwrap();
+        enqueue_screenshot(&database, &screenshot_sample("shot-ok", "C:/tmp/ok.jpg")).unwrap();
+        enqueue_screenshot(&database, &screenshot_sample("shot-bad", "C:/tmp/bad.jpg")).unwrap();
+        let file_paths = apply_screenshot_result(
+            &database,
+            &SyncResult {
+                confirmed_ids: vec!["shot-ok".to_string()],
+                failed: vec![crate::models::FailedSample {
+                    id: "shot-bad".to_string(),
+                    error: "rejected".to_string(),
+                }],
+            },
+        )
+        .unwrap();
+        assert_eq!(file_paths.len(), 2);
+        assert!(file_paths.contains(&"C:/tmp/ok.jpg".to_string()));
+        assert!(file_paths.contains(&"C:/tmp/bad.jpg".to_string()));
+        // The row is retried (not deleted) until permanent_failure is confirmed via the caller's
+        // own file-not-found handling -- here we only assert the path contract used for cleanup.
+        assert_eq!(all_screenshot_file_paths(&database).unwrap().len(), 2);
     }
 }

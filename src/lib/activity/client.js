@@ -82,12 +82,20 @@ export function createBlocklistRequest({ domain, reason, requestedMinutes = 30 }
   });
 }
 
+export function getScreenshotSignedUrl(storagePath) {
+  const query = new URLSearchParams({ path: storagePath });
+  return activityRequest(`/screenshots/signed-url?${query}`).then(payload => payload.data.url);
+}
+
 export function visibleAcknowledgementText(policy) {
   return [
     `I acknowledge FieldFlow monitoring policy version ${policy.policyVersion}.`,
     `I understand that tracking occurs only during an active work session.`,
     `Collected records may include session times, active and idle duration, input activity counts, device status, agent version${policy.collectApplicationNames ? ", and active application names" : ""}.`,
-    `Typed characters, passwords, clipboard contents, screenshots, mouse coordinates, full browser URLs, page content, window titles, and full file paths are not collected. A managed extension may collect active website hostnames only.`,
+    policy.collectScreenshots
+      ? `A screenshot of my screen is captured roughly every ${policy.screenshotIntervalSeconds} seconds during an active session, excluding a list of applications my organisation has configured.`
+      : `Screenshots are not collected.`,
+    `Typed characters, passwords, clipboard contents, mouse coordinates, full browser URLs, page content, window titles, and full file paths are not collected. A managed extension may collect active website hostnames only.`,
     `Records are retained for ${policy.retentionDays} days.`
   ].join(" ");
 }

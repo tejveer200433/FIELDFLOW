@@ -65,7 +65,7 @@ test("a permission loss clears team rows and closes details", () => {
 
 test("sensitive monitoring fields and raw sample values are not rendered", () => {
   for (const source of [page, table, drawer]) {
-    assert.doesNotMatch(source, /deviceIdentifier|identifierHash|typedText|clipboard|screenshot|keyCode|mouseCoordinates|keyboardEventCount|mouseEventCount/);
+    assert.doesNotMatch(source, /deviceIdentifier|identifierHash|typedText|clipboard|keyCode|mouseCoordinates|keyboardEventCount|mouseEventCount/);
   }
 });
 

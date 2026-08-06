@@ -24,7 +24,11 @@ const routePaths = [
   "employees/route.js",
   "employees/[employeeId]/route.js",
   "policies/route.js",
-  "policies/acknowledge/route.js"
+  "policies/acknowledge/route.js",
+  "coding/ingest/route.js",
+  "blocklist-requests/route.js",
+  "screenshots/register/route.js",
+  "screenshots/signed-url/route.js"
 ];
 
 test("all required activity route handlers exist and require server authentication", () => {
