@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   groupSamplesBySession,
+  hexToBytes,
   normalizeUtcTimestamp,
   reconcileBatch,
   syncPendingCodingSamples,
@@ -9,6 +10,11 @@ import {
   syncPendingScreenshotSamples,
   syncPendingWebsiteSamples
 } from "../src/lib/sync.js";
+
+test("hexToBytes decodes a hex-encoded file back into its exact original bytes", () => {
+  assert.deepEqual(hexToBytes("010203ff00"), new Uint8Array([1, 2, 3, 255, 0]));
+  assert.deepEqual(hexToBytes(""), new Uint8Array([]));
+});
 
 test("UTC timestamps with an explicit zero offset are normalized for the API", () => {
   assert.equal(
@@ -201,7 +207,7 @@ test("a registered screenshot uploads directly to storage and is confirmed", asy
   const invokeCommand = async (command, payload) => {
     calls.push({ command, payload });
     if (command === "pending_screenshot_samples") return queued;
-    if (command === "read_screenshot_file") return new Uint8Array([1, 2, 3]);
+    if (command === "read_screenshot_file") return "010203";
     return null;
   };
   const api = {
@@ -222,6 +228,7 @@ test("a registered screenshot uploads directly to storage and is confirmed", asy
   });
   const upload = calls.find(call => call.command === "uploadScreenshot").payload;
   assert.equal(upload.storagePath, "employee/session-a/20260806120000-abc.jpg");
+  assert.deepEqual(upload.bytes, new Uint8Array([1, 2, 3]));
   const confirm = calls.find(call => call.command === "apply_screenshot_sync_result").payload;
   assert.deepEqual(confirm.result, { confirmedIds: ["shot-one"], failed: [] });
 });

@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Activity, BarChart3, Bell, BriefcaseBusiness, ChevronLeft, CircleHelp, ClipboardList, Clock3, LogOut, Map, Menu, ReceiptText, Search, Settings, ShieldCheck, Users, X, Zap } from "lucide-react";
 import { signOutUser, useAuthGuard } from "@/lib/authClient";
 import { AccessProvider } from "@/components/AccessContext";
+import { formatTimeAgo, useNotifications } from "@/lib/notificationsClient";
 import { hasAnyPermission, PERMISSIONS } from "@/lib/permissions";
 
 const managementNav = [
@@ -38,6 +39,7 @@ export default function RoleShell({ role, children }) {
   const pathname = usePathname();
   const router = useRouter();
   const access = useAuthGuard(role);
+  const { items: notifications, unreadCount, markAllRead } = useNotifications();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [panel, setPanel] = useState("");
@@ -95,11 +97,27 @@ export default function RoleShell({ role, children }) {
         <button aria-label="Open menu" onClick={() => setMobileOpen(true)} className="icon-button lg:hidden"><Menu className="h-5 w-5" /></button>
         <form onSubmit={search} className="relative w-full max-w-xl"><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} className="input py-3 pl-12" placeholder="Search users, tasks, reports…" aria-label="Search workspace" /></form>
         <div className="relative ml-auto flex items-center gap-2">
-          <button aria-label="Notifications" onClick={() => setPanel(panel === "notifications" ? "" : "notifications")} className="icon-button"><Bell className="h-5 w-5 text-amber-500" /><span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500" /></button>
+          <button aria-label="Notifications" onClick={() => setPanel(panel === "notifications" ? "" : "notifications")} className="icon-button">
+            <Bell className="h-5 w-5 text-amber-500" />
+            {unreadCount > 0 && <span className="absolute right-1 top-1 grid h-4 min-w-[1rem] place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white">{unreadCount > 9 ? "9+" : unreadCount}</span>}
+          </button>
           <button aria-label="Help" onClick={() => setPanel(panel === "help" ? "" : "help")} className="icon-button"><CircleHelp className="h-5 w-5" /></button>
           <button onClick={() => setPanel(panel === "profile" ? "" : "profile")} className="ml-1 flex items-center gap-3 rounded-full border border-slate-200 p-1.5 pr-4 text-left"><span className="grid h-10 w-10 place-items-center rounded-full bg-blue-100 font-bold text-blue-700">{displayName.charAt(0).toUpperCase()}</span><span className="hidden sm:block"><strong className="block text-sm">{displayName}</strong><small className="block max-w-36 truncate uppercase tracking-wide text-slate-500">{dynamicRoleName}</small></span></button>
           {panel && <div className="absolute right-0 top-14 w-80 rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
-            {panel === "notifications" && <><h3 className="font-bold">Notifications</h3><p className="mt-3 rounded-xl bg-blue-50 p-3 text-sm">Your permitted work queues update automatically.</p></>}
+            {panel === "notifications" && <>
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold">Notifications</h3>
+                {unreadCount > 0 && <button onClick={markAllRead} className="text-xs font-semibold text-blue-600 hover:underline">Mark all read</button>}
+              </div>
+              <div className="mt-3 max-h-96 space-y-2 overflow-y-auto">
+                {notifications.length === 0 && <p className="rounded-xl bg-blue-50 p-3 text-sm text-slate-500">Your permitted work queues update automatically.</p>}
+                {notifications.map(item => <div key={item.id} className={`rounded-xl border p-3 text-sm ${item.read ? "border-slate-100 bg-white" : "border-blue-100 bg-blue-50"}`}>
+                  <p className="font-semibold text-slate-800">{item.title}</p>
+                  <p className="mt-1 text-slate-600">{item.body}</p>
+                  <p className="mt-1 text-xs text-slate-400">{formatTimeAgo(item.createdAt)}</p>
+                </div>)}
+              </div>
+            </>}
             {panel === "help" && <><h3 className="font-bold">Need help?</h3><p className="mt-2 text-sm leading-6 text-slate-500">Your sidebar contains only modules allowed by your assigned role.</p><button onClick={() => setPanel("")} className="btn-primary mt-4 w-full">Got it</button></>}
             {panel === "profile" && <><p className="font-bold">{displayName}</p><p className="text-sm text-slate-500">{access.profile?.email}</p><p className="mt-2 text-sm font-semibold text-blue-700">{dynamicRoleName}</p><button onClick={logout} className="btn-secondary mt-4 w-full"><LogOut className="h-4 w-4" />Sign out</button></>}
           </div>}

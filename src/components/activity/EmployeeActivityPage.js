@@ -53,7 +53,7 @@ export default function EmployeeActivityPage() {
   const [devices, setDevices] = useState([]);
   const [sessionInfo, setSessionInfo] = useState({ active: false, session: null });
   const [activity, setActivity] = useState(null);
-  const [rangeDays, setRangeDays] = useState(7);
+  const [rangeDays, setRangeDays] = useState(1);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState(null);
@@ -188,7 +188,7 @@ export default function EmployeeActivityPage() {
     <ActivityDeviceList devices={devices} heartbeat={heartbeat} heartbeatIntervalSeconds={policy?.heartbeatIntervalSeconds} />
     <div className="grid gap-6 xl:grid-cols-2">
       <ActivityTimeline sessions={activity?.timeline || []} rangeDays={rangeDays} onRangeChange={setRangeDays} />
-      <ApplicationUsageSummary enabled={Boolean(policy?.collectApplicationNames)} usage={activity?.applicationUsage || []} sampleIntervalSeconds={policy?.sampleIntervalSeconds} trackedSeconds={rangeTrackedSeconds} />
+      <ApplicationUsageSummary enabled={Boolean(policy?.collectApplicationNames)} usage={activity?.applicationUsage || []} sampleIntervalSeconds={policy?.sampleIntervalSeconds} trackedSeconds={rangeTrackedSeconds} rangeDays={rangeDays} onRangeChange={setRangeDays} />
     </div>
     <WebsiteUsageSummary usage={activity?.websiteUsage || []} />
     <CodingActivitySummary enabled={Boolean(policy?.collectCodingProjectNames)} usage={activity?.codingUsage || []} />

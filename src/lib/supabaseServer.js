@@ -83,6 +83,28 @@ export function assertUserInScope(scope, userId) {
   }
 }
 
+// Fire-and-forget by design: a notification failing to send must never break
+// the underlying action (submitting an expense, checking in, etc.) it's
+// reporting on. Callers should not await a rejection from this into their
+// own error handling -- it already swallows and logs internally.
+export async function notifyEvent(client, {
+  employeeId, permissionKey, type, title, body, entityType, entityId = null
+}) {
+  try {
+    await client.rpc("notify_event", {
+      p_employee_id: employeeId,
+      p_permission_key: permissionKey,
+      p_type: type,
+      p_title: title,
+      p_body: body,
+      p_entity_type: entityType,
+      p_entity_id: entityId
+    });
+  } catch (error) {
+    console.error("[notifyEvent] failed to send notification", type, error);
+  }
+}
+
 export function apiFailure(error) {
   const status = error instanceof ApiError ? error.status : 500;
   if (status === 500) console.error(error);

@@ -170,6 +170,14 @@ export async function syncPendingCodingSamples(api, invokeCommand = invoke) {
   return totals;
 }
 
+export function hexToBytes(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+  }
+  return bytes;
+}
+
 async function syncScreenshotSample(api, sample, invokeCommand) {
   await invokeCommand("mark_screenshot_samples_uploading", { ids: [sample.localSampleId] });
   try {
@@ -180,8 +188,8 @@ async function syncScreenshotSample(api, sample, invokeCommand) {
       activeApplication: sample.activeApplication,
       byteSize: sample.byteSize
     });
-    const bytes = await invokeCommand("read_screenshot_file", { path: sample.filePath });
-    await api.uploadScreenshot({ storagePath: registration.storagePath, bytes });
+    const encoded = await invokeCommand("read_screenshot_file", { path: sample.filePath });
+    await api.uploadScreenshot({ storagePath: registration.storagePath, bytes: hexToBytes(encoded) });
     await invokeCommand("apply_screenshot_sync_result", {
       result: { confirmedIds: [sample.localSampleId], failed: [] }
     });

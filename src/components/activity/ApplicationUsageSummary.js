@@ -2,10 +2,15 @@ import { AppWindow } from "lucide-react";
 import { formatDuration, formatPercentage } from "@/lib/activity/formatters";
 import ActivityEmptyState from "@/components/activity/ActivityEmptyState";
 
-export default function ApplicationUsageSummary({ enabled, usage, sampleIntervalSeconds, trackedSeconds }) {
+export default function ApplicationUsageSummary({ enabled, usage, sampleIntervalSeconds, trackedSeconds, rangeDays, onRangeChange }) {
   if (!enabled) return <section className="card p-5 sm:p-6"><ActivityEmptyState title="Application usage unavailable" description="Application-name collection is disabled by your organisation." /></section>;
   return <section className="card p-5 sm:p-6">
-    <div className="flex items-center gap-3"><AppWindow className="h-5 w-5 text-blue-600" /><div><h2 className="font-bold">Application usage summary</h2><p className="text-sm text-slate-500">Approximate time based on grouped activity samples.</p></div></div>
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-3"><AppWindow className="h-5 w-5 text-blue-600" /><div><h2 className="font-bold">Application usage summary</h2><p className="text-sm text-slate-500">Approximate time based on grouped activity samples.</p></div></div>
+      {onRangeChange && <select aria-label="Application usage range" className="input w-full sm:w-auto" value={rangeDays} onChange={event => onRangeChange(Number(event.target.value))}>
+        <option value={1}>Today</option><option value={2}>Today and yesterday</option><option value={7}>Last 7 days</option>
+      </select>}
+    </div>
     {!usage.length
       ? <div className="mt-5"><ActivityEmptyState title="No application data" description="Application summaries will appear after activity samples are uploaded." /></div>
       : <div className="mt-5 space-y-4">{usage.map(item => {

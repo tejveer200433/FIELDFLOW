@@ -1,4 +1,4 @@
-import { ApiError, apiFailure, assertUserInScope, requireAnyPermission, requirePermission, resolveUserScope } from "@/lib/supabaseServer";
+import { ApiError, apiFailure, assertUserInScope, notifyEvent, requireAnyPermission, requirePermission, resolveUserScope } from "@/lib/supabaseServer";
 import { formatDuration } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
@@ -88,6 +88,25 @@ async function hydrateAttendance(client, rows) {
   };
 }
 
+const OUT_OF_RADIUS_MESSAGE = geofenceMessages[1];
+
+// The geofence RPC raises before any row is ever inserted, so nothing about a
+// rejected attempt is normally persisted anywhere. Rather than restructure
+// that tested, load-bearing RPC's error-vs-return contract, notify here as a
+// separate statement -- independent of the failed attendance transaction --
+// right before converting the same rejection into the same 403 as today.
+async function notifyIfOutOfRadius(client, profile, action, error) {
+  if (!error?.message?.includes(OUT_OF_RADIUS_MESSAGE)) return;
+  await notifyEvent(client, {
+    employeeId: profile.id,
+    permissionKey: "attendance.view_team",
+    type: "attendance_geofence_violation",
+    title: "Attendance attempted outside allowed location",
+    body: `${profile.full_name || "An employee"} tried to ${action === "check-in" ? "check in" : "check out"} from outside the allowed radius.`,
+    entityType: "attendance_shift"
+  });
+}
+
 function throwRpcError(error) {
   const message = geofenceMessages.find(item => error?.message?.includes(item));
   if (message) throw new ApiError(message, 403);
@@ -124,7 +143,10 @@ export async function POST(request) {
     if (body.action === "check-in") {
       const { data: id, error } = await client.rpc("check_in_with_gps", { p_time_zone: timeZone, p_lat: Number(body.location.latitude), p_lng: Number(body.location.longitude), p_accuracy: Number(body.location.accuracy) || null });
       if (error?.code === "23505") throw new ApiError("You are already checked in.", 409);
-      if (error) throwRpcError(error);
+      if (error) {
+        await notifyIfOutOfRadius(client, profile, "check-in", error);
+        throwRpcError(error);
+      }
       const { data, error: readError } = await client.from("attendance_shifts").select(attendanceSelect).eq("id", id).single();
       if (readError) throw readError;
       const context = await hydrateAttendance(client, [data]);
@@ -134,7 +156,10 @@ export async function POST(request) {
     if (openError) throw openError;
     if (!open) throw new ApiError("No active check-in was found.", 409);
     const { data: id, error } = await client.rpc("check_out_with_gps", { p_lat: Number(body.location.latitude), p_lng: Number(body.location.longitude), p_accuracy: Number(body.location.accuracy) || null });
-    if (error) throwRpcError(error);
+    if (error) {
+      await notifyIfOutOfRadius(client, profile, "check-out", error);
+      throwRpcError(error);
+    }
     const { data, error: readError } = await client.from("attendance_shifts").select(attendanceSelect).eq("id", id).single();
     if (readError) throw readError;
     const context = await hydrateAttendance(client, [data]);

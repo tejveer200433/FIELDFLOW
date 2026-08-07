@@ -1,4 +1,4 @@
-import { ApiError, apiFailure, assertUserInScope, requireAnyPermission, requirePermission, resolveUserScope } from "@/lib/supabaseServer";
+import { ApiError, apiFailure, assertUserInScope, notifyEvent, requireAnyPermission, requirePermission, resolveUserScope } from "@/lib/supabaseServer";
 
 export const dynamic = "force-dynamic";
 const expenseSelect = "*,profiles!expenses_employee_id_fkey(full_name)";
@@ -41,7 +41,17 @@ export async function POST(request) {
       receipt_url: body.receiptUrl || null
     }).select(expenseSelect).single();
     if (error) throw error;
-    return Response.json({ data: map(data) }, { status: 201 });
+    const mapped = map(data);
+    await notifyEvent(client, {
+      employeeId: profile.id,
+      permissionKey: "expenses.approve",
+      type: "expense_submitted",
+      title: "Expense submitted for approval",
+      body: `${mapped.employee} submitted a ${mapped.type} expense of ₹${mapped.amount.toFixed(2)}.`,
+      entityType: "expense",
+      entityId: mapped.id
+    });
+    return Response.json({ data: mapped }, { status: 201 });
   } catch (error) {
     return apiFailure(error);
   }

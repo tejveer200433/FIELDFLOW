@@ -176,4 +176,30 @@ mod tests {
     fn empty_exclude_list_excludes_nothing() {
         assert!(!is_excluded_application("anything", &[]));
     }
+
+    #[test]
+    #[ignore = "requires a live display; run manually with `cargo test -- --ignored screenshot_capture_round_trips_through_hex`"]
+    fn screenshot_capture_round_trips_through_hex() {
+        let monitors = xcap::Monitor::all().expect("no monitors available");
+        let monitor = monitors
+            .iter()
+            .find(|monitor| monitor.is_primary().unwrap_or(false))
+            .or_else(|| monitors.first())
+            .expect("no monitor found");
+        let image = monitor.capture_image().expect("capture failed");
+        let mut encoded = Vec::new();
+        {
+            let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut encoded, 70);
+            encoder.encode_image(&image).expect("encode failed");
+        }
+        assert!(encoded.len() > 100, "encoded JPEG suspiciously small: {} bytes", encoded.len());
+        assert_eq!(&encoded[0..3], [0xFF, 0xD8, 0xFF], "missing JPEG SOI marker");
+        assert_eq!(&encoded[encoded.len() - 2..], [0xFF, 0xD9], "missing JPEG EOI marker");
+
+        let hex = hex::encode(&encoded);
+        let dir = "C:/Users/HP/AppData/Local/Temp/claude/c--Users-HP-Downloads-fieldflow-nextjs/fab3d3cf-a40b-455e-964f-7c55794a6433/scratchpad";
+        std::fs::write(format!("{dir}/roundtrip_original.jpg"), &encoded).expect("write jpg failed");
+        std::fs::write(format!("{dir}/roundtrip.hex"), &hex).expect("write hex failed");
+        println!("encoded {} bytes -> {} hex chars", encoded.len(), hex.len());
+    }
 }

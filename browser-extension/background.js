@@ -8,7 +8,7 @@ const BLOCK_RULE_PREFIX = 1000;
 let browserChangeTimer;
 let lastQueuedDomain = null;
 let detectedBrowserName;
-let currentBlockRuleIds = [];
+let refreshInFlight = null;
 
 async function setStatus(state, message, domain = null) {
   await extensionApi.storage.local.set({
@@ -77,6 +77,16 @@ function activeBlockedDomains(blocklist) {
 // FieldFlow API directly, only to the already-authenticated desktop agent.
 async function refreshBlockingRules() {
   if (!extensionApi.declarativeNetRequest) return;
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = applyBlockingRules();
+  try {
+    await refreshInFlight;
+  } finally {
+    refreshInFlight = null;
+  }
+}
+
+async function applyBlockingRules() {
   let domains = [];
   try {
     const response = await fetch(`${CONFIG.bridgeUrl}/v1/blocklist`);
@@ -96,11 +106,16 @@ async function refreshBlockingRules() {
     condition: { requestDomains: [domain], resourceTypes: ["main_frame"] }
   }));
   try {
-    await extensionApi.declarativeNetRequest.updateDynamicRules({
-      removeRuleIds: currentBlockRuleIds,
-      addRules
-    });
-    currentBlockRuleIds = addRules.map(rule => rule.id);
+    // Never trust in-memory bookkeeping of "which rules I added" -- the browser can evict
+    // and restart this background service worker at any time, which resets every module-level
+    // variable but NOT the browser's own persisted dynamic rules. Always ask the browser what
+    // currently exists and remove exactly that, or updateDynamicRules rejects the whole call
+    // the moment an added rule id collides with one that's already there from a prior run.
+    const existingRules = await extensionApi.declarativeNetRequest.getDynamicRules();
+    const removeRuleIds = existingRules
+      .map(rule => rule.id)
+      .filter(id => id >= BLOCK_RULE_PREFIX);
+    await extensionApi.declarativeNetRequest.updateDynamicRules({ removeRuleIds, addRules });
     console.log("FieldFlow: blocking rules updated", addRules);
   } catch (error) {
     console.error("FieldFlow: updateDynamicRules failed", error, addRules);

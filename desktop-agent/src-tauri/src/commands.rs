@@ -270,7 +270,7 @@ pub fn apply_screenshot_sync_result(
 }
 
 #[tauri::command]
-pub fn read_screenshot_file(path: String) -> Result<tauri::ipc::Response, String> {
+pub fn read_screenshot_file(path: String) -> Result<String, String> {
     let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
-    Ok(tauri::ipc::Response::new(bytes))
+    Ok(hex::encode(bytes))
 }

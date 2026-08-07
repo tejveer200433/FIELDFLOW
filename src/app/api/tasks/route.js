@@ -2,6 +2,7 @@ import {
   ApiError,
   apiFailure,
   assertUserInScope,
+  notifyEvent,
   requireAnyPermission,
   resolveUserScope
 } from "@/lib/supabaseServer";
@@ -101,6 +102,17 @@ export async function PATCH(request) {
     const { data, error: readError } = await session.client.from("tasks").select(taskSelect).eq("id", body.id).single();
     if (readError) throw readError;
     const employeeNames = await getEmployeeNames(session.client, [data]);
+    if (body.status === "Completed") {
+      await notifyEvent(session.client, {
+        employeeId: task.employee_id,
+        permissionKey: "tasks.assign",
+        type: "task_completed",
+        title: "Field task completed",
+        body: `${employeeNames.get(task.employee_id) || "An employee"} marked "${data.title}" as completed.`,
+        entityType: "task",
+        entityId: data.id
+      });
+    }
     return Response.json({ data: map(data, employeeNames) });
   } catch (error) {
     return apiFailure(error);

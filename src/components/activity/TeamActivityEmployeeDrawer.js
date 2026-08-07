@@ -15,7 +15,7 @@ import { getEmployeeActivityDetails } from "@/lib/activity/managerClient";
 import { dateRange, formatDateTime, formatDuration, formatPercentage, shortIdentifier } from "@/lib/activity/teamFormatters";
 
 export default function TeamActivityEmployeeDrawer({ employee, policy, onClose }) {
-  const [rangeDays, setRangeDays] = useState(7);
+  const [rangeDays, setRangeDays] = useState(1);
   const [details, setDetails] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -61,7 +61,7 @@ export default function TeamActivityEmployeeDrawer({ employee, policy, onClose }
           <InputActivitySummary activity={details.todayInputActivity} />
           <WebsiteUsageSummary usage={details.websiteUsage || []} />
           <section className="card p-5"><div className="mb-4"><h3 className="font-bold">Grouped timeline</h3><p className="text-sm text-slate-500">Session-level records for the selected range.</p></div><TeamActivityTimeline sessions={details.timeline} /></section>
-          <ApplicationUsageSummary enabled={Boolean(policy?.collectApplicationNames)} usage={details.applicationUsage || []} sampleIntervalSeconds={policy?.sampleIntervalSeconds} trackedSeconds={latestSummary?.trackedSeconds || 0} />
+          <ApplicationUsageSummary enabled={Boolean(policy?.collectApplicationNames)} usage={details.applicationUsage || []} sampleIntervalSeconds={policy?.sampleIntervalSeconds} trackedSeconds={latestSummary?.trackedSeconds || 0} rangeDays={rangeDays} onRangeChange={setRangeDays} />
           <CodingActivitySummary enabled={Boolean(policy?.collectCodingProjectNames)} usage={details.codingUsage || []} />
           <ScreenshotActivitySummary enabled={Boolean(policy?.collectScreenshots)} screenshots={details.screenshots || []} />
         </>}
