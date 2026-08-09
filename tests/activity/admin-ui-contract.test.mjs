@@ -12,6 +12,7 @@ const devices = read("src/components/activity/MonitoringDeviceAdministration.js"
 const shell = read("src/components/RoleShell.js");
 const adminClient = read("src/lib/activity/adminClient.js");
 const policyClient = read("src/lib/activity/policyClient.js");
+const screenshotSummary = read("src/components/activity/ScreenshotActivitySummary.js");
 
 test("admin routes use the existing guarded admin shell", () => {
   assert.match(read("src/app/admin/activity/page.js"), /<RoleShell role="admin"><AdminWorkforceActivityPage \/><\/RoleShell>/);
@@ -90,6 +91,17 @@ test("device revoke and reactivate require confirmation", () => {
   assert.match(devices, /act\(device, "reactivate"\)/);
   assert.match(settings, /revokeMonitoringDevice\(device\.deviceId\)/);
   assert.match(settings, /reactivateMonitoringDevice\(device\.deviceId\)/);
+});
+
+test("admins can control per-device screenshot capture and delete selected history", () => {
+  assert.match(devices, /onScreenshotCaptureChange/);
+  assert.match(devices, /screenshotCaptureEnabled/);
+  assert.match(settings, /setDeviceScreenshotCapture/);
+  assert.match(policyClient, /set-screenshot-capture/);
+  assert.match(policyClient, /\/screenshots\/delete/);
+  assert.match(screenshotSummary, /Delete selected/);
+  assert.match(screenshotSummary, /window\.confirm/);
+  assert.match(workforce, /activity\.policies\.manage/);
 });
 
 test("rate limit and concurrent server errors remain safe", () => {

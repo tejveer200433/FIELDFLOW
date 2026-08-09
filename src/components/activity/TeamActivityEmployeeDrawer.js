@@ -12,9 +12,10 @@ import TeamActivityLoadingState from "@/components/activity/TeamActivityLoadingS
 import TeamActivityStatusBadge from "@/components/activity/TeamActivityStatusBadge";
 import TeamActivityTimeline from "@/components/activity/TeamActivityTimeline";
 import { getEmployeeActivityDetails } from "@/lib/activity/managerClient";
+import { deleteActivityScreenshots } from "@/lib/activity/policyClient";
 import { dateRange, formatDateTime, formatDuration, formatPercentage, shortIdentifier } from "@/lib/activity/teamFormatters";
 
-export default function TeamActivityEmployeeDrawer({ employee, policy, onClose }) {
+export default function TeamActivityEmployeeDrawer({ employee, policy, onClose, canDeleteScreenshots = false }) {
   const [rangeDays, setRangeDays] = useState(1);
   const [details, setDetails] = useState(null);
   const [error, setError] = useState(null);
@@ -38,6 +39,14 @@ export default function TeamActivityEmployeeDrawer({ employee, policy, onClose }
     [currentSession?.deviceId, details?.devices]
   );
   const latestSummary = details?.dailySummaries?.[0] || null;
+
+  async function deleteScreenshots(screenshotIds) {
+    await deleteActivityScreenshots(screenshotIds);
+    setDetails(current => current ? {
+      ...current,
+      screenshots: (current.screenshots || []).filter(screenshot => !screenshotIds.includes(screenshot.id))
+    } : current);
+  }
 
   return <div className="fixed inset-0 z-[1100] flex justify-end bg-slate-950/40" role="dialog" aria-modal="true" aria-label={`${employee.employeeName} activity details`}>
     <button aria-label="Close employee activity details" type="button" className="absolute inset-0 cursor-default" onClick={onClose} />
@@ -63,7 +72,7 @@ export default function TeamActivityEmployeeDrawer({ employee, policy, onClose }
           <section className="card p-5"><div className="mb-4"><h3 className="font-bold">Grouped timeline</h3><p className="text-sm text-slate-500">Session-level records for the selected range.</p></div><TeamActivityTimeline sessions={details.timeline} /></section>
           <ApplicationUsageSummary enabled={Boolean(policy?.collectApplicationNames)} usage={details.applicationUsage || []} sampleIntervalSeconds={policy?.sampleIntervalSeconds} trackedSeconds={latestSummary?.trackedSeconds || 0} rangeDays={rangeDays} onRangeChange={setRangeDays} />
           <CodingActivitySummary enabled={Boolean(policy?.collectCodingProjectNames)} usage={details.codingUsage || []} />
-          <ScreenshotActivitySummary enabled={Boolean(policy?.collectScreenshots)} screenshots={details.screenshots || []} />
+          <ScreenshotActivitySummary enabled={Boolean(policy?.collectScreenshots)} screenshots={details.screenshots || []} canDelete={canDeleteScreenshots} onDelete={deleteScreenshots} />
         </>}
       </div>
     </aside>

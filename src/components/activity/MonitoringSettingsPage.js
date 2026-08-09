@@ -19,6 +19,7 @@ import {
   getMonitoringPolicy,
   reactivateMonitoringDevice,
   revokeMonitoringDevice,
+  setDeviceScreenshotCapture,
   updateMonitoringPolicy
 } from "@/lib/activity/policyClient";
 import { formatDateTime, formatDuration } from "@/lib/activity/adminFormatters";
@@ -88,6 +89,22 @@ export default function MonitoringSettingsPage() {
     }
   }
 
+  async function setScreenshotCapture(device, enabled) {
+    setBusy(device.deviceId);
+    setDeviceError(null);
+    try {
+      const response = await setDeviceScreenshotCapture(device.deviceId, enabled);
+      setDevices(current => current.map(item => item.deviceId === device.deviceId
+        ? { ...item, screenshotCaptureEnabled: response.data.screenshotCaptureEnabled, screenshotCaptureMode: "override" }
+        : item));
+      setNotice(response.message || `Screenshot capture ${enabled ? "enabled" : "disabled"} for ${device.deviceName}.`);
+    } catch (requestError) {
+      setDeviceError(requestError);
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function loadMoreDevices() {
     if (!deviceCursor) return;
     setBusy("devices");
@@ -113,9 +130,9 @@ export default function MonitoringSettingsPage() {
     <div className="grid gap-6 xl:grid-cols-2"><MonitoringPolicyCard policy={policy} /><section className="card p-5"><h2 className="font-bold">Additional active-policy settings</h2><dl className="mt-4 space-y-3 text-sm"><div><dt className="text-slate-500">Offline synchronisation limit</dt><dd className="font-semibold">{formatDuration(policy?.offlineSyncLimitSeconds)}</dd></div><div><dt className="text-slate-500">Created and updated time</dt><dd className="font-semibold">Not exposed by Phase 2 API</dd></div></dl></section></div>
     <MonitoringPolicyForm policy={policy} busy={busy === "policy"} onSave={savePolicy} />
     <div className="grid gap-6 xl:grid-cols-2"><MonitoringPolicyHistory /><MonitoringAcknowledgementSummary policy={policy} /></div>
-    <MonitoringDeviceAdministration devices={devices} error={deviceError} busyDeviceId={busy} nextCursor={deviceCursor} loadingMore={busy === "devices"} onAction={deviceAction} onLoadMore={loadMoreDevices} />
+    <MonitoringDeviceAdministration devices={devices} screenshotsGloballyEnabled={Boolean(policy?.collectScreenshots)} error={deviceError} busyDeviceId={busy} nextCursor={deviceCursor} loadingMore={busy === "devices"} onAction={deviceAction} onScreenshotCaptureChange={setScreenshotCapture} onLoadMore={loadMoreDevices} />
     {policy?.websiteBlockingEnabled && <BlocklistOverrideAdministration />}
     <MonitoringAuditLog />
-    <section className="card p-5"><div className="flex gap-3"><Shield className="h-5 w-5 text-blue-600" /><div><h2 className="font-bold">Privacy and separation</h2><p className="mt-2 text-sm leading-6 text-slate-600">Activity tracking records aggregate input counts and session state only during explicit work sessions. Typed content, passwords, clipboard contents, screenshots, mouse coordinates, URLs, window titles, and full paths are not collected. Attendance and employee location sharing remain separate FIELD-FLOW features.</p></div></div></section>
+    <section className="card p-5"><div className="flex gap-3"><Shield className="h-5 w-5 text-blue-600" /><div><h2 className="font-bold">Privacy and separation</h2><p className="mt-2 text-sm leading-6 text-slate-600">Activity tracking records aggregate input counts and session state during work sessions. Periodic screenshots are collected only when both the organisation policy and the registered device setting allow them; excluded applications remain protected. Typed content, passwords, clipboard contents, mouse coordinates, URLs, window titles, and full paths are not collected. Attendance and employee location sharing remain separate FIELD-FLOW features.</p></div></div></section>
   </div>;
 }

@@ -153,6 +153,6 @@ export default function AdminWorkforceActivityPage() {
     </>}
     <div className="grid gap-6 xl:grid-cols-2"><WorkforceDevicePanel devices={devices} nextCursor={deviceCursor} loadingMore={loadingMore === "devices"} onLoadMore={loadMoreDevices} /><WorkforceAuditPanel /></div>
     <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm leading-6 text-blue-900"><strong>About Activity level</strong><p className="mt-1">Activity level is based on recorded keyboard and mouse activity counts during an active work session. It should not be interpreted as a complete measure of productivity, performance, or work quality.</p></section>
-    {selectedEmployee && <WorkforceEmployeeDrawer employee={selectedEmployee} policy={policy} onClose={() => setSelectedId(null)} />}
+    {selectedEmployee && <WorkforceEmployeeDrawer employee={selectedEmployee} policy={policy} canDeleteScreenshots={Boolean(access?.isOwner || hasPermission(access, "activity.policies.manage"))} onClose={() => setSelectedId(null)} />}
   </div>;
 }

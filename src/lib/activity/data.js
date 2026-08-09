@@ -51,7 +51,7 @@ export function mapBlocklistOverrideRequest(row) {
   };
 }
 
-export function mapDevice(row) {
+export function mapDevice(row, extras = {}) {
   return {
     deviceId: row.id,
     employeeId: row.employee_id,
@@ -62,7 +62,11 @@ export function mapDevice(row) {
     status: row.status,
     registeredAt: row.registered_at,
     lastSeenAt: row.last_seen_at,
-    revokedAt: row.revoked_at
+    revokedAt: row.revoked_at,
+    employeeName: extras.employeeName || null,
+    employeeEmail: extras.employeeEmail || null,
+    screenshotCaptureEnabled: extras.screenshotCaptureEnabled ?? true,
+    screenshotCaptureMode: extras.screenshotCaptureMode || "inherit"
   };
 }
 

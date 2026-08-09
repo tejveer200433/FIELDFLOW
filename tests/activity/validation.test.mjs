@@ -9,6 +9,7 @@ import {
   parsePolicyAdministration,
   parseSampleBatch,
   parseScreenshotRegistration,
+  parseScreenshotDeletion,
   parseScreenshotSignedUrlQuery,
   parseSessionStart,
   parseSessionStop,
@@ -47,6 +48,10 @@ test("sensitive identity and tracking fields are rejected", () => {
 
 test("device actions are constrained", () => {
   assert.deepEqual(parseDeviceUpdate({ action: "revoke" }), { action: "revoke", agentVersion: null });
+  assert.deepEqual(parseDeviceUpdate({ action: "set-screenshot-capture", screenshotCaptureEnabled: false }), {
+    action: "set-screenshot-capture", agentVersion: null, screenshotCaptureEnabled: false
+  });
+  assert.throws(() => parseDeviceUpdate({ action: "set-screenshot-capture" }), ActivityValidationError);
   assert.throws(() => parseDeviceUpdate({ action: "transfer" }), ActivityValidationError);
 });
 
@@ -182,6 +187,18 @@ test("screenshot signed-url requests only accept the expected storage path shape
   assert.equal(parsed.path, validPath);
   assert.throws(
     () => parseScreenshotSignedUrlQuery(new URLSearchParams({ path: "../etc/passwd" })),
+    ActivityValidationError
+  );
+});
+
+test("screenshot deletion accepts a bounded unique UUID list", () => {
+  assert.deepEqual(parseScreenshotDeletion({ screenshotIds: [deviceId, deviceId, sessionId] }), {
+    screenshotIds: [deviceId, sessionId]
+  });
+  assert.throws(() => parseScreenshotDeletion({ screenshotIds: [] }), ActivityValidationError);
+  assert.throws(() => parseScreenshotDeletion({ screenshotIds: ["not-a-uuid"] }), ActivityValidationError);
+  assert.throws(
+    () => parseScreenshotDeletion({ screenshotIds: Array.from({ length: 101 }, () => deviceId) }),
     ActivityValidationError
   );
 });

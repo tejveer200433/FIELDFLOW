@@ -123,6 +123,7 @@ export default function App() {
   const [lastSample, setLastSample] = useState(null);
   const [lastHeartbeat, setLastHeartbeat] = useState(null);
   const [currentApplication, setCurrentApplication] = useState(null);
+  const [screenshotCaptureEnabled, setScreenshotCaptureEnabled] = useState(false);
   const [updateStatus, setUpdateStatus] = useState(
     config.updatesEnabled ? "Waiting for automatic check" : "Not configured"
   );
@@ -176,6 +177,7 @@ export default function App() {
         return { ...current, status: result.deviceStatus };
       });
       setLastHeartbeat(new Date());
+      setScreenshotCaptureEnabled(Boolean(result.collectScreenshots));
       setError(current => current.startsWith("Heartbeat delayed:") ? "" : current);
       await invoke("set_agent_state", {
         key: "blocklist_json",
@@ -574,7 +576,7 @@ export default function App() {
         }
       }, Math.max(10, policy.sampleIntervalSeconds || 60) * 1000));
     }
-    if (session && policy.trackingEnabled && policy.collectScreenshots) {
+    if (session && policy.trackingEnabled && policy.collectScreenshots && screenshotCaptureEnabled) {
       timers.current.push(window.setInterval(async () => {
         if (screenshotting.current) return;
         screenshotting.current = true;
@@ -589,7 +591,7 @@ export default function App() {
       }, Math.max(180, policy.screenshotIntervalSeconds || 240) * 1000));
     }
     return clearTimers;
-  }, [account, clearTimers, deviceId, online, performSync, policy, reconcileWithServer, refreshQueue, sendHeartbeat, session]);
+  }, [account, clearTimers, deviceId, online, performSync, policy, reconcileWithServer, refreshQueue, screenshotCaptureEnabled, sendHeartbeat, session]);
 
   async function acknowledge(text) {
     await api.acknowledgePolicy({
@@ -678,6 +680,7 @@ export default function App() {
     await agentLog("logout_succeeded");
     setAccount(null);
     setPolicy(null);
+    setScreenshotCaptureEnabled(false);
     setDevice(null);
   }
 

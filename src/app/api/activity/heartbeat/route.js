@@ -21,6 +21,14 @@ export async function POST(request) {
     });
     if (error) throwActivityDatabaseError(error);
     const [heartbeat, policy] = [rpcRow(data), await getActivePolicy(session.client, { required: false })];
+    const { data: screenshotSetting, error: screenshotSettingError } = await session.client
+      .from("device_screenshot_settings")
+      .select("capture_enabled")
+      .eq("device_id", body.deviceId)
+      .eq("employee_id", session.profile.id)
+      .maybeSingle();
+    if (screenshotSettingError) throw screenshotSettingError;
+    const collectScreenshots = Boolean(policy?.collect_screenshots) && screenshotSetting?.capture_enabled !== false;
     let activeOverrides = [];
     if (policy?.website_blocking_enabled) {
       const { data: overrides, error: overrideError } = await session.client
@@ -40,9 +48,9 @@ export async function POST(request) {
       websiteBlockingEnabled: Boolean(policy?.website_blocking_enabled),
       blockedDomains: policy?.website_blocking_enabled ? (policy?.blocked_domains || []) : [],
       activeOverrides,
-      collectScreenshots: Boolean(policy?.collect_screenshots),
+      collectScreenshots,
       screenshotIntervalSeconds: policy?.screenshot_interval_seconds || 240,
-      screenshotExcludedApps: policy?.collect_screenshots ? (policy?.screenshot_excluded_apps || []) : []
+      screenshotExcludedApps: collectScreenshots ? (policy?.screenshot_excluded_apps || []) : []
     }, { status: 201 });
   } catch (error) {
     return activityFailure(error);

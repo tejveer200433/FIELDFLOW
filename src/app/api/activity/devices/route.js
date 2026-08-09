@@ -30,7 +30,32 @@ export async function GET(request) {
     const { data, error } = await query;
     if (error) throw error;
     const page = pageResult(data, offset, filters.limit);
-    return activitySuccess({ devices: page.data.map(mapDevice), pagination: page.pagination });
+    const deviceIds = page.data.map(device => device.id);
+    const employeeIds = [...new Set(page.data.map(device => device.employee_id))];
+    const [settingsResult, profilesResult] = await Promise.all([
+      deviceIds.length
+        ? session.client.from("device_screenshot_settings").select("device_id,capture_enabled").in("device_id", deviceIds)
+        : Promise.resolve({ data: [], error: null }),
+      employeeIds.length
+        ? session.client.from("profiles").select("id,full_name,email").in("id", employeeIds)
+        : Promise.resolve({ data: [], error: null })
+    ]);
+    if (settingsResult.error) throw settingsResult.error;
+    if (profilesResult.error) throw profilesResult.error;
+    const settings = new Map((settingsResult.data || []).map(item => [item.device_id, item.capture_enabled]));
+    const profiles = new Map((profilesResult.data || []).map(item => [item.id, item]));
+    return activitySuccess({
+      devices: page.data.map(device => {
+        const profile = profiles.get(device.employee_id);
+        return mapDevice(device, {
+          employeeName: profile?.full_name,
+          employeeEmail: profile?.email,
+          screenshotCaptureEnabled: settings.get(device.id) ?? true,
+          screenshotCaptureMode: settings.has(device.id) ? "override" : "inherit"
+        });
+      }),
+      pagination: page.pagination
+    });
   } catch (error) {
     return activityFailure(error);
   }

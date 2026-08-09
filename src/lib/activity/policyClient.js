@@ -48,6 +48,20 @@ export function reactivateMonitoringDevice(deviceId) {
   return updateMonitoringDevice(deviceId, "reactivate");
 }
 
+export function setDeviceScreenshotCapture(deviceId, enabled) {
+  return policyRequest(`/devices/${encodeURIComponent(deviceId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ action: "set-screenshot-capture", screenshotCaptureEnabled: enabled })
+  });
+}
+
+export function deleteActivityScreenshots(screenshotIds) {
+  return policyRequest("/screenshots/delete", {
+    method: "POST",
+    body: JSON.stringify({ screenshotIds })
+  });
+}
+
 export function getBlocklistOverrideRequests() {
   return policyRequest("/blocklist-requests").then(payload => payload.data.requests);
 }

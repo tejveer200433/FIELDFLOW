@@ -16,6 +16,14 @@ export async function PATCH(request, { params }) {
     const { deviceId } = await params;
     if (!isUuid(deviceId)) throw new ActivityError("INVALID_DEVICE_ID", "A valid device ID is required.", 400);
     const body = parseDeviceUpdate(await readActivityJson(request));
+    if (body.action === "set-screenshot-capture") {
+      const { data, error } = await session.client.rpc("activity_set_device_screenshot_capture", {
+        p_device_id: deviceId,
+        p_enabled: body.screenshotCaptureEnabled
+      });
+      if (error) throwActivityDatabaseError(error);
+      return activitySuccess(data, { message: `Screenshot capture ${body.screenshotCaptureEnabled ? "enabled" : "disabled"} for this device.` });
+    }
     const { data, error } = await session.client.rpc("activity_update_device", {
       p_device_id: deviceId,
       p_action: body.action,

@@ -10,6 +10,7 @@ const hardening = readFileSync(join(root, "supabase/migrations/202607290001_acti
 const summaries = readFileSync(join(root, "supabase/migrations/202607290002_activity_daily_summary_aggregation.sql"), "utf8");
 const ingestionFix = readFileSync(join(root, "supabase/migrations/202607290003_activity_ingestion_conflict_fix.sql"), "utf8");
 const websiteActivity = readFileSync(join(root, "supabase/migrations/202607300001_website_domain_activity.sql"), "utf8");
+const screenshotControls = readFileSync(join(root, "supabase/migrations/202608090001_device_screenshot_controls.sql"), "utf8");
 const routePaths = [
   "devices/route.js",
   "devices/register/route.js",
@@ -28,7 +29,8 @@ const routePaths = [
   "coding/ingest/route.js",
   "blocklist-requests/route.js",
   "screenshots/register/route.js",
-  "screenshots/signed-url/route.js"
+  "screenshots/signed-url/route.js",
+  "screenshots/delete/route.js"
 ];
 
 test("all required activity route handlers exist and require server authentication", () => {
@@ -135,4 +137,24 @@ test("website activity accepts hostnames only through an authenticated bounded R
   assert.match(websiteActivity, /active_session[\s\S]*employee_id=auth\.uid\(\)/);
   assert.match(websiteActivity, /on conflict\(employee_id,local_sample_id\) do nothing/);
   assert.match(websiteActivity, /revoke insert, update, delete on public\.website_activity_samples from authenticated/);
+});
+
+test("device screenshot overrides are admin-controlled and enforced during registration", () => {
+  assert.match(screenshotControls, /create table public\.device_screenshot_settings/);
+  assert.match(screenshotControls, /No row means inherit the active monitoring policy/);
+  assert.match(screenshotControls, /activity\.policies\.manage/);
+  assert.match(screenshotControls, /activity_device_screenshots_enabled\(tracking_session\.device_id, auth\.uid\(\)\)/);
+  assert.match(screenshotControls, /where setting\.device_id = shot\.device_id/);
+  assert.match(screenshotControls, /revoke insert, update, delete on public\.device_screenshot_settings from authenticated/);
+});
+
+test("screenshot deletion requires dynamic RBAC at storage and metadata boundaries", () => {
+  const route = readFileSync(join(root, "src/app/api/activity/screenshots/delete/route.js"), "utf8");
+  assert.match(route, /ACTIVITY_PERMISSIONS\.managePolicies/);
+  assert.match(route, /storage\.from\("activity-screenshots"\)\.remove\(paths\)/);
+  assert.match(route, /rpc\("activity_delete_screenshot_records"/);
+  assert.match(screenshotControls, /create policy activity_screenshots_admin_delete/);
+  assert.match(screenshotControls, /activity\.policies\.manage/);
+  assert.match(screenshotControls, /not between 1 and 100/);
+  assert.match(screenshotControls, /'screenshot\.deleted'/);
 });

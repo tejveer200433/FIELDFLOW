@@ -150,7 +150,7 @@ export async function GET(request, { params }) {
         .sort((a, b) => b.sampleCount - a.sampleCount).slice(0, 25),
       codingUsage: Array.from(codingCounts.values())
         .sort((a, b) => b.durationSeconds - a.durationSeconds).slice(0, 25),
-      screenshots: policy?.collect_screenshots ? (screenshotsResult.data || []).map(mapScreenshot) : [],
+      screenshots: (screenshotsResult.data || []).map(mapScreenshot),
       recentHeartbeat: heartbeat ? {
         deviceId: heartbeat.device_id,
         trackingSessionId: heartbeat.tracking_session_id,

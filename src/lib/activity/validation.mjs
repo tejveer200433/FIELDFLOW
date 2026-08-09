@@ -97,12 +97,16 @@ export function parseDeviceRegistration(value) {
 }
 
 export function parseDeviceUpdate(value) {
-  const body = object(value, ["action", "agentVersion"]);
+  const body = object(value, ["action", "agentVersion", "screenshotCaptureEnabled"]);
+  const action = enumeration(body.action, "action", ["revoke", "reactivate", "update-agent", "set-screenshot-capture"]);
   return {
-    action: enumeration(body.action, "action", ["revoke", "reactivate", "update-agent"]),
+    action,
     agentVersion: body.action === "update-agent"
       ? string(body.agentVersion, "agentVersion", { max: 80 })
-      : optionalString(body.agentVersion, "agentVersion", { max: 80 })
+      : optionalString(body.agentVersion, "agentVersion", { max: 80 }),
+    ...(action === "set-screenshot-capture"
+      ? { screenshotCaptureEnabled: boolean(body.screenshotCaptureEnabled, "screenshotCaptureEnabled") }
+      : {})
   };
 }
 
@@ -388,6 +392,16 @@ export function parseScreenshotSignedUrlQuery(searchParams) {
   const path = string(query.path, "path", { max: 500 });
   if (!screenshotPathPattern.test(path)) fail("path must be a valid screenshot storage path.");
   return { path };
+}
+
+export function parseScreenshotDeletion(value) {
+  const body = object(value, ["screenshotIds"]);
+  if (!Array.isArray(body.screenshotIds) || body.screenshotIds.length < 1 || body.screenshotIds.length > 100) {
+    fail("screenshotIds must contain between 1 and 100 IDs.");
+  }
+  const screenshotIds = [...new Set(body.screenshotIds.map((id, index) => uuid(id, `screenshotIds[${index}]`)))];
+  if (!screenshotIds.length) fail("At least one screenshot ID is required.");
+  return { screenshotIds };
 }
 
 export function isUuid(value) {
