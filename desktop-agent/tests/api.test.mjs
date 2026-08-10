@@ -64,6 +64,20 @@ test("device status is loaded from the authenticated FIELD-FLOW device endpoint"
   assert.equal(result.devices[0].status, "pending");
 });
 
+test("effective web access policy is refreshed independently for the registered device", async () => {
+  let requestedUrl;
+  const api = createActivityApi({
+    baseUrl: "https://fieldflow.example",
+    supabase: supabaseWith({ access_token: "secret", expires_at: 4_000_000_000 }),
+    fetchImpl: async url => {
+      requestedUrl = url;
+      return new Response(JSON.stringify({ success: true, data: { ruleId: "rule-1", activeOverrides: [] } }), { status: 200 });
+    }
+  });
+  await api.getWebAccessPolicy("device id/1");
+  assert.equal(requestedUrl, "https://fieldflow.example/api/activity/web-access/policy?deviceId=device%20id%2F1");
+});
+
 test("API refreshes and retries once when the server rejects an expired token", async () => {
   const oldSession = { access_token: "stale-secret", expires_at: 4_000_000_000 };
   const newSession = { access_token: "fresh-secret", expires_at: 4_000_000_000 };

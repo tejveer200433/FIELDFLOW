@@ -1,5 +1,6 @@
 import { CONFIG } from "./config.js";
 import { detectBrowserName } from "./browser-detection.mjs";
+import { activeBlockedDomains, isDomainBlocked } from "./blocklist.mjs";
 
 const extensionApi = globalThis.browser ?? globalThis.chrome;
 const STATUS_KEY = "fieldflowWebsiteStatus";
@@ -95,13 +96,6 @@ async function sampleActiveWebsite({ durationSeconds = CONFIG.sampleSeconds, req
   }
 }
 
-function activeBlockedDomains(blocklist) {
-  const overridden = new Set((blocklist.overrides || [])
-    .filter(item => new Date(item.overrideEndsAt).getTime() > Date.now())
-    .map(item => item.domain));
-  return (blocklist.blockedDomains || []).filter(domain => !overridden.has(domain));
-}
-
 // Fetches the current blocklist + any manager-approved overrides from the desktop
 // agent's local bridge and syncs them into declarativeNetRequest dynamic rules. This is
 // the only place the extension learns about blocking policy -- it never talks to the
@@ -153,6 +147,12 @@ async function applyBlockingRules() {
   }
 }
 
+async function currentBlocklist() {
+  const response = await fetch(`${CONFIG.bridgeUrl}/v1/blocklist`, { cache: "no-store" });
+  if (!response.ok) throw new Error("FieldFlow blocklist is unavailable.");
+  return response.json();
+}
+
 async function ensureSamplingAlarm() {
   const existing = await extensionApi.alarms.get(SAMPLE_ALARM);
   if (!existing) {
@@ -192,10 +192,23 @@ extensionApi.runtime.onMessage.addListener(message => {
   if (message?.type === "fieldflow-blocked" && typeof message.domain === "string") {
     reportBlockedEvent("domain", message.domain.slice(0, 253));
   }
+  if (message?.type === "fieldflow-check-access" && typeof message.domain === "string") {
+    return (async () => {
+      await refreshBlockingRules();
+      const blocklist = await currentBlocklist();
+      return { allowed: !isDomainBlocked(message.domain, blocklist) };
+    })().catch(() => ({ allowed: false }));
+  }
 });
-extensionApi.tabs.onActivated.addListener(sampleAfterBrowserChange);
+extensionApi.tabs.onActivated.addListener(() => {
+  sampleAfterBrowserChange();
+  refreshBlockingRules().catch(() => {});
+});
 extensionApi.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
-  if (tab.active && (changeInfo.url || changeInfo.status === "complete")) sampleAfterBrowserChange();
+  if (tab.active && (changeInfo.url || changeInfo.status === "complete")) {
+    sampleAfterBrowserChange();
+    refreshBlockingRules().catch(() => {});
+  }
 });
 extensionApi.windows.onFocusChanged.addListener(windowId => {
   if (windowId !== extensionApi.windows.WINDOW_ID_NONE) sampleAfterBrowserChange();

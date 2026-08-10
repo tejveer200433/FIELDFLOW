@@ -9,7 +9,7 @@ Collection is automatic after installation: it samples when the browser starts, 
 1. Install and run a Stage 3 compatible FieldFlow desktop agent.
 2. For Chrome, Edge, Brave, or another Chromium browser, open its extensions page, enable Developer mode, choose **Load unpacked**, and select this folder.
 3. For Firefox testing, open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select `manifest.json` from this folder.
-4. Confirm extension version `0.4.0`.
+4. Confirm extension version `0.4.1`.
 
 No extension login, Supabase configuration, Vercel extension-ID allowlist, or browser-held refresh token is required. The local agent must be running on `127.0.0.1:38473`.
 

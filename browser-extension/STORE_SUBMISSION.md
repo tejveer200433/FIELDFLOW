@@ -2,8 +2,8 @@
 
 The packaging script creates two upload files:
 
-- `fieldflow-website-activity-chromium-0.4.0.zip` for the Chrome Web Store and compatible Chromium stores;
-- `fieldflow-website-activity-firefox-0.4.0.zip` for Mozilla Add-ons.
+- `fieldflow-website-activity-chromium-0.4.1.zip` for the Chrome Web Store and compatible Chromium stores;
+- `fieldflow-website-activity-firefox-0.4.1.zip` for Mozilla Add-ons.
 
 These ZIP files are store-upload packages, not Windows installers. Do not use the old repository-root `browser-extension.zip`.
 

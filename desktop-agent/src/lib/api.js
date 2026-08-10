@@ -74,6 +74,7 @@ export function createActivityApi({ baseUrl, supabase, fetchImpl = fetch }) {
 
   return {
     getPolicy: () => request("/api/activity/policies"),
+    getWebAccessPolicy: deviceId => request(`/api/activity/web-access/policy?deviceId=${encodeURIComponent(deviceId)}`),
     getDevices: () => request("/api/activity/devices?limit=100"),
     acknowledgePolicy: body => request("/api/activity/policies/acknowledge", {
       method: "POST", body: JSON.stringify(body)

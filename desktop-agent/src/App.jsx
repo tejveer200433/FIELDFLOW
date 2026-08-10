@@ -148,6 +148,26 @@ export default function App() {
     timers.current = [];
   }, []);
 
+  const applyWebAccessPolicy = useCallback(async effectiveWebPolicy => {
+    const policyValue = effectiveWebPolicy || {
+      enabled: false,
+      blockedDomains: [],
+      blockedApplications: [],
+      activeOverrides: [],
+      requireManagedExtension: false
+    };
+    setWebAccessPolicy(policyValue);
+    await invoke("set_agent_state", {
+      key: "blocklist_json",
+      value: JSON.stringify({
+        blockedDomains: policyValue.enabled ? (policyValue.blockedDomains || []) : [],
+        overrides: (policyValue.activeOverrides || [])
+          .filter(item => item.resourceType === "domain")
+          .map(item => ({ domain: item.resourceKey, overrideEndsAt: item.accessEndsAt || null }))
+      })
+    }).catch(() => null);
+  }, []);
+
   const sendHeartbeat = useCallback(async ({
     targetDeviceId,
     targetSessionId = trackingSessionId.current,
@@ -188,17 +208,8 @@ export default function App() {
             activeOverrides: (result.activeOverrides || []).map(item => ({ resourceType: "domain", resourceKey: item.domain, accessEndsAt: item.overrideEndsAt })),
             requireManagedExtension: false
           };
-      setWebAccessPolicy(effectiveWebPolicy);
+      await applyWebAccessPolicy(effectiveWebPolicy);
       setError(current => current.startsWith("Heartbeat delayed:") ? "" : current);
-      await invoke("set_agent_state", {
-        key: "blocklist_json",
-        value: JSON.stringify({
-          blockedDomains: effectiveWebPolicy.enabled ? (effectiveWebPolicy.blockedDomains || []) : [],
-          overrides: (effectiveWebPolicy.activeOverrides || [])
-            .filter(item => item.resourceType === "domain")
-            .map(item => ({ domain: item.resourceKey, overrideEndsAt: item.accessEndsAt }))
-        })
-      }).catch(() => null);
       await invoke("set_agent_state", {
         key: "screenshot_excluded_apps_json",
         value: JSON.stringify(result.collectScreenshots ? (result.screenshotExcludedApps || []) : [])
@@ -238,7 +249,7 @@ export default function App() {
     } finally {
       heartbeatInFlight.current = false;
     }
-  }, [api]);
+  }, [api, applyWebAccessPolicy]);
 
   const refreshQueue = useCallback(async () => {
     const count = await invoke("pending_sample_count");
@@ -614,26 +625,6 @@ export default function App() {
         }
       }, Math.max(10, policy.sampleIntervalSeconds || 60) * 1000));
     }
-    if (account && deviceId && webAccessPolicy?.enabled) {
-      timers.current.push(window.setInterval(async () => {
-        const allowedApplications = new Set((webAccessPolicy.activeOverrides || [])
-          .filter(item => item.resourceType === "application" && (!item.accessEndsAt || new Date(item.accessEndsAt).getTime() > Date.now()))
-          .map(item => String(item.resourceKey).toLowerCase()));
-        const blockedApplications = (webAccessPolicy.blockedApplications || [])
-          .filter(application => !allowedApplications.has(String(application).toLowerCase()));
-        if (!blockedApplications.length) return;
-        try {
-          const blocked = await invoke("enforce_restricted_applications", { blockedApplications });
-          if (blocked) {
-            setError(`${blocked} is restricted by your organisation. Request temporary access in My Activity.`);
-            await api.recordWebAccessEvent({ deviceId, eventType: "application_blocked", resourceType: "application", resourceKey: blocked }).catch(() => null);
-          }
-        } catch (enforcementError) {
-          await agentLog("native_application_enforcement_failed", "warn");
-          setError(`Application restriction check failed: ${enforcementError}`);
-        }
-      }, 2000));
-    }
     if (session && policy.trackingEnabled && policy.collectScreenshots && screenshotCaptureEnabled) {
       timers.current.push(window.setInterval(async () => {
         if (screenshotting.current) return;
@@ -649,7 +640,50 @@ export default function App() {
       }, Math.max(180, policy.screenshotIntervalSeconds || 240) * 1000));
     }
     return clearTimers;
-  }, [account, api, clearTimers, deviceId, online, performSync, policy, reconcileWithServer, refreshQueue, screenshotCaptureEnabled, sendHeartbeat, session, webAccessPolicy]);
+  }, [account, api, clearTimers, deviceId, online, performSync, policy, reconcileWithServer, refreshQueue, screenshotCaptureEnabled, sendHeartbeat, session]);
+
+  useEffect(() => {
+    if (!account || !api || !deviceId || !online) return undefined;
+    let cancelled = false;
+    const refreshWebAccessPolicy = async () => {
+      try {
+        const current = await api.getWebAccessPolicy(deviceId);
+        if (!cancelled) await applyWebAccessPolicy(current);
+      } catch {
+        await agentLog("web_access_policy_refresh_delayed", "warn");
+      }
+    };
+    refreshWebAccessPolicy();
+    const policyTimer = window.setInterval(refreshWebAccessPolicy, 10000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(policyTimer);
+    };
+  }, [account, api, applyWebAccessPolicy, deviceId, online]);
+
+  useEffect(() => {
+    if (!account || !deviceId || !webAccessPolicy?.enabled) return undefined;
+    const enforceApplications = async () => {
+      const allowedApplications = new Set((webAccessPolicy.activeOverrides || [])
+        .filter(item => item.resourceType === "application" && (!item.accessEndsAt || new Date(item.accessEndsAt).getTime() > Date.now()))
+        .map(item => String(item.resourceKey).toLowerCase()));
+      const blockedApplications = (webAccessPolicy.blockedApplications || [])
+        .filter(application => !allowedApplications.has(String(application).toLowerCase()));
+      if (!blockedApplications.length) return;
+      try {
+        const blocked = await invoke("enforce_restricted_applications", { blockedApplications });
+        if (blocked) {
+          setError(`${blocked} is restricted by your organisation. Request temporary access in My Activity.`);
+          await api.recordWebAccessEvent({ deviceId, eventType: "application_blocked", resourceType: "application", resourceKey: blocked }).catch(() => null);
+        }
+      } catch (enforcementError) {
+        await agentLog("native_application_enforcement_failed", "warn");
+        setError(`Application restriction check failed: ${enforcementError}`);
+      }
+    };
+    const applicationTimer = window.setInterval(enforceApplications, 2000);
+    return () => window.clearInterval(applicationTimer);
+  }, [account, api, deviceId, webAccessPolicy]);
 
   async function acknowledge(text) {
     await api.acknowledgePolicy({
