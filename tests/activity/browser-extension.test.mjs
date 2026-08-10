@@ -44,6 +44,10 @@ test("website collection is automatic and contains no separate authentication", 
   assert.doesNotMatch(popup, /check-now|Check active website/i);
   assert.doesNotMatch(`${background}\n${config}\n${popup}`, /password|supabaseAnonKey|accessToken|refreshToken/);
   assert.deepEqual(JSON.parse(read("browser-extension/manifest.json")).host_permissions, [
-    "http://127.0.0.1:38473/*"
+    "http://127.0.0.1:38473/*",
+    "http://*/*",
+    "https://*/*"
   ]);
+  assert.match(background, /extension-heartbeat/);
+  assert.match(background, /fieldflow-blocked/);
 });

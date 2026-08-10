@@ -19,6 +19,7 @@ import MonitoringAcknowledgement from "@/components/activity/MonitoringAcknowled
 import MonitoringPolicyCard from "@/components/activity/MonitoringPolicyCard";
 import ScreenshotActivitySummary from "@/components/activity/ScreenshotActivitySummary";
 import WebsiteUsageSummary from "@/components/activity/WebsiteUsageSummary";
+import WebAccessRequestCenter from "@/components/activity/WebAccessRequestCenter";
 import { hasPermission } from "@/lib/permissions";
 import {
   acknowledgePolicy,
@@ -194,6 +195,7 @@ export default function EmployeeActivityPage() {
     <CodingActivitySummary enabled={Boolean(policy?.collectCodingProjectNames)} usage={activity?.codingUsage || []} />
     <ScreenshotActivitySummary enabled={Boolean(policy?.collectScreenshots)} screenshots={activity?.screenshots || []} />
     {policy?.websiteBlockingEnabled && <Suspense fallback={null}><BlockedSiteRequestForm /></Suspense>}
+    <WebAccessRequestCenter devices={devices} />
     <section className="card p-5 text-sm text-slate-600">
       <h2 className="font-bold text-slate-900">Heartbeat and sync status</h2>
       {heartbeat

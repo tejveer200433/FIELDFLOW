@@ -13,6 +13,7 @@ import MonitoringPolicyForm from "@/components/activity/MonitoringPolicyForm";
 import MonitoringPolicyHistory from "@/components/activity/MonitoringPolicyHistory";
 import MonitoringPolicyCard from "@/components/activity/MonitoringPolicyCard";
 import MonitoringSettingsWarning from "@/components/activity/MonitoringSettingsWarning";
+import WebAccessAdministration from "@/components/activity/WebAccessAdministration";
 import { hasPermission } from "@/lib/permissions";
 import {
   getMonitoringDevices,
@@ -132,6 +133,7 @@ export default function MonitoringSettingsPage() {
     <div className="grid gap-6 xl:grid-cols-2"><MonitoringPolicyHistory /><MonitoringAcknowledgementSummary policy={policy} /></div>
     <MonitoringDeviceAdministration devices={devices} screenshotsGloballyEnabled={Boolean(policy?.collectScreenshots)} error={deviceError} busyDeviceId={busy} nextCursor={deviceCursor} loadingMore={busy === "devices"} onAction={deviceAction} onScreenshotCaptureChange={setScreenshotCapture} onLoadMore={loadMoreDevices} />
     {policy?.websiteBlockingEnabled && <BlocklistOverrideAdministration />}
+    <WebAccessAdministration />
     <MonitoringAuditLog />
     <section className="card p-5"><div className="flex gap-3"><Shield className="h-5 w-5 text-blue-600" /><div><h2 className="font-bold">Privacy and separation</h2><p className="mt-2 text-sm leading-6 text-slate-600">Activity tracking records aggregate input counts and session state during work sessions. Periodic screenshots are collected only when both the organisation policy and the registered device setting allow them; excluded applications remain protected. Typed content, passwords, clipboard contents, mouse coordinates, URLs, window titles, and full paths are not collected. Attendance and employee location sharing remain separate FIELD-FLOW features.</p></div></div></section>
   </div>;

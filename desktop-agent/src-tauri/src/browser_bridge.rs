@@ -16,6 +16,24 @@ struct DomainReport {
     duration_seconds: Option<i64>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ExtensionHealthReport {
+    browser_name: String,
+    extension_id: String,
+    extension_version: String,
+    status: String,
+    recorded_at: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WebAccessEventReport {
+    event_type: String,
+    resource_type: String,
+    resource_key: String,
+}
+
 fn extension_origin(request: &Request) -> Option<String> {
     let value = request
         .headers()
@@ -81,8 +99,8 @@ fn handle(mut request: Request, app: &AppHandle) {
         .headers()
         .iter()
         .any(|header| header.field.equiv("Origin"));
-    let is_safe_read = request.method() == &Method::Get
-        && matches!(request.url(), "/v1/status" | "/v1/blocklist");
+    let is_safe_read =
+        request.method() == &Method::Get && matches!(request.url(), "/v1/status" | "/v1/blocklist");
 
     // Extension background-script GET fetches can arrive with no Origin header at all
     // (observed in Brave -- POST requests from the same extension always include one).
@@ -128,6 +146,156 @@ fn handle(mut request: Request, app: &AppHandle) {
             .flatten()
             .unwrap_or_else(|| r#"{"blockedDomains":[],"overrides":[]}"#.to_string());
         respond(request, origin_value, 200, &blocklist);
+        return;
+    }
+    if request.method() == &Method::Post && request.url() == "/v1/extension-heartbeat" {
+        if request.body_length().unwrap_or(0) > 4096 {
+            respond(
+                request,
+                origin_value,
+                413,
+                r#"{"accepted":false,"state":"invalid"}"#,
+            );
+            return;
+        }
+        let mut bytes = Vec::new();
+        if request
+            .as_reader()
+            .take(4097)
+            .read_to_end(&mut bytes)
+            .is_err()
+            || bytes.len() > 4096
+        {
+            respond(
+                request,
+                origin_value,
+                400,
+                r#"{"accepted":false,"state":"invalid"}"#,
+            );
+            return;
+        }
+        let Ok(report) = serde_json::from_slice::<ExtensionHealthReport>(&bytes) else {
+            respond(
+                request,
+                origin_value,
+                400,
+                r#"{"accepted":false,"state":"invalid"}"#,
+            );
+            return;
+        };
+        if !valid_browser_name(&report.browser_name)
+            || report.extension_id.len() > 160
+            || report.extension_version.len() > 40
+            || report.status != "installed"
+            || report.recorded_at.len() > 40
+        {
+            respond(
+                request,
+                origin_value,
+                400,
+                r#"{"accepted":false,"state":"invalid"}"#,
+            );
+            return;
+        }
+        let value = serde_json::json!({
+            "browserName": report.browser_name.to_ascii_lowercase(),
+            "extensionId": report.extension_id,
+            "extensionVersion": report.extension_version,
+            "status": "installed",
+            "lastSeenAt": chrono::Utc::now().to_rfc3339()
+        })
+        .to_string();
+        let status =
+            if database::set_state(&database, "browser_extension_heartbeat_json", &value).is_ok() {
+                202
+            } else {
+                503
+            };
+        respond(
+            request,
+            origin_value,
+            status,
+            if status == 202 {
+                r#"{"accepted":true}"#
+            } else {
+                r#"{"accepted":false,"state":"unavailable"}"#
+            },
+        );
+        return;
+    }
+    if request.method() == &Method::Post && request.url() == "/v1/web-access-event" {
+        if request.body_length().unwrap_or(0) > 4096 {
+            respond(
+                request,
+                origin_value,
+                413,
+                r#"{"accepted":false,"state":"invalid"}"#,
+            );
+            return;
+        }
+        let mut bytes = Vec::new();
+        if request
+            .as_reader()
+            .take(4097)
+            .read_to_end(&mut bytes)
+            .is_err()
+            || bytes.len() > 4096
+        {
+            respond(
+                request,
+                origin_value,
+                400,
+                r#"{"accepted":false,"state":"invalid"}"#,
+            );
+            return;
+        }
+        let Ok(report) = serde_json::from_slice::<WebAccessEventReport>(&bytes) else {
+            respond(
+                request,
+                origin_value,
+                400,
+                r#"{"accepted":false,"state":"invalid"}"#,
+            );
+            return;
+        };
+        if !matches!(
+            report.event_type.as_str(),
+            "domain_blocked" | "application_blocked"
+        ) || !matches!(report.resource_type.as_str(), "domain" | "application")
+            || report.resource_key.is_empty()
+            || report.resource_key.len() > 253
+        {
+            respond(
+                request,
+                origin_value,
+                400,
+                r#"{"accepted":false,"state":"invalid"}"#,
+            );
+            return;
+        }
+        let value = serde_json::json!({
+            "eventType": report.event_type,
+            "resourceType": report.resource_type,
+            "resourceKey": report.resource_key.to_ascii_lowercase(),
+            "recordedAt": chrono::Utc::now().to_rfc3339()
+        })
+        .to_string();
+        let status =
+            if database::set_state(&database, "pending_web_access_event_json", &value).is_ok() {
+                202
+            } else {
+                503
+            };
+        respond(
+            request,
+            origin_value,
+            status,
+            if status == 202 {
+                r#"{"accepted":true}"#
+            } else {
+                r#"{"accepted":false,"state":"unavailable"}"#
+            },
+        );
         return;
     }
     if request.method() != &Method::Post || request.url() != "/v1/domain" {

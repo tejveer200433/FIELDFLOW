@@ -16,7 +16,7 @@ use windows::{
             },
             StationsAndDesktops::{CloseDesktop, OpenInputDesktop, DESKTOP_SWITCHDESKTOP},
             SystemInformation::GetTickCount,
-            Threading::GetCurrentProcessId,
+            Threading::{GetCurrentProcessId, OpenProcess, TerminateProcess, PROCESS_TERMINATE},
         },
         UI::{
             Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO},
@@ -114,6 +114,61 @@ pub fn active_application() -> Result<Option<String>, String> {
         }
         process_name(process_id)
     }
+}
+
+pub fn terminate_foreground_if_restricted(
+    blocked_applications: &[String],
+) -> Result<Option<String>, String> {
+    unsafe {
+        let window = GetForegroundWindow();
+        if window.0.is_null() {
+            return Ok(None);
+        }
+        let mut process_id = 0;
+        GetWindowThreadProcessId(window, Some(&mut process_id));
+        if process_id == 0 || process_id == GetCurrentProcessId() {
+            return Ok(None);
+        }
+        let Some(application) = process_name(process_id)? else {
+            return Ok(None);
+        };
+        let normalized = application.trim_end_matches(".exe").to_ascii_lowercase();
+        if !is_application_restricted(&normalized, blocked_applications) {
+            return Ok(None);
+        }
+        let handle =
+            OpenProcess(PROCESS_TERMINATE, false, process_id).map_err(|error| error.to_string())?;
+        let result = TerminateProcess(handle, 23);
+        let _ = CloseHandle(handle);
+        result.map_err(|error| error.to_string())?;
+        Ok(Some(application))
+    }
+}
+
+fn is_application_restricted(application: &str, blocked_applications: &[String]) -> bool {
+    const PROTECTED: [&str; 12] = [
+        "explorer",
+        "dwm",
+        "winlogon",
+        "csrss",
+        "services",
+        "lsass",
+        "svchost",
+        "system",
+        "fieldflow-activity-agent",
+        "chrome",
+        "msedge",
+        "brave",
+    ];
+    let normalized = application
+        .trim()
+        .trim_end_matches(".exe")
+        .to_ascii_lowercase();
+    !PROTECTED.contains(&normalized.as_str())
+        && blocked_applications.iter().any(|value| {
+            let configured = value.trim().trim_end_matches(".exe").to_ascii_lowercase();
+            normalized == configured || normalized.starts_with(&format!("{configured}."))
+        })
 }
 
 /// Only these four IDEs are recognized; extending this list later is a one-line addition.
@@ -317,8 +372,8 @@ pub fn device_identity() -> Result<DeviceIdentity, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        elapsed_ticks, ide_label_for_process, parse_eclipse_project, parse_intellij_project,
-        parse_vscode_like_project, sanitize_application_name,
+        elapsed_ticks, ide_label_for_process, is_application_restricted, parse_eclipse_project,
+        parse_intellij_project, parse_vscode_like_project, sanitize_application_name,
     };
 
     #[test]
@@ -361,8 +416,10 @@ mod tests {
     #[test]
     fn intellij_project_is_the_first_segment() {
         assert_eq!(
-            parse_intellij_project("fieldflow \u{2013} [app] \u{2013} App.java \u{2013} IntelliJ IDEA 2024.1")
-                .as_deref(),
+            parse_intellij_project(
+                "fieldflow \u{2013} [app] \u{2013} App.java \u{2013} IntelliJ IDEA 2024.1"
+            )
+            .as_deref(),
             Some("fieldflow")
         );
         assert_eq!(
@@ -402,5 +459,19 @@ mod tests {
             120
         );
         assert_eq!(sanitize_application_name("<>|"), None);
+    }
+
+    #[test]
+    fn native_restrictions_match_only_configured_non_system_apps() {
+        let blocked = vec![
+            "WhatsApp.exe".to_string(),
+            "telegram".to_string(),
+            "chrome".to_string(),
+        ];
+        assert!(is_application_restricted("whatsapp", &blocked));
+        assert!(is_application_restricted("WhatsApp.Root.exe", &blocked));
+        assert!(is_application_restricted("Telegram.exe", &blocked));
+        assert!(!is_application_restricted("chrome", &blocked));
+        assert!(!is_application_restricted("notepad", &blocked));
     }
 }

@@ -9,6 +9,7 @@ import TeamActivityFilters from "@/components/activity/TeamActivityFilters";
 import TeamActivityLoadingState from "@/components/activity/TeamActivityLoadingState";
 import TeamActivitySummaryCards from "@/components/activity/TeamActivitySummaryCards";
 import TeamActivityTable from "@/components/activity/TeamActivityTable";
+import WebAccessAdministration from "@/components/activity/WebAccessAdministration";
 import { hasAnyPermission } from "@/lib/permissions";
 import { getTeamActivity, getTeamMonitoringPolicy } from "@/lib/activity/managerClient";
 import { currentPageSummary, formatDateTime, todayUtc } from "@/lib/activity/teamFormatters";
@@ -116,6 +117,7 @@ export default function ManagerTeamActivityPage() {
       <TeamActivityTable rows={visibleRows} hasFilters={hasFilters} nextCursor={nextCursor} loadingMore={loading || loadingMore} onLoadMore={() => load({ append: true, cursor: nextCursor })} onSelect={row => setSelectedId(row.employeeId)} />
     </>}
     <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm leading-6 text-blue-900"><strong>About Activity level</strong><p className="mt-1">Activity level is based on recorded keyboard and mouse activity counts during a work session. It should not be interpreted as a complete measure of productivity or work quality.</p></section>
+    <WebAccessAdministration />
     {selectedEmployee && <TeamActivityEmployeeDrawer employee={selectedEmployee} policy={policy} onClose={() => setSelectedId(null)} />}
   </div>;
 }

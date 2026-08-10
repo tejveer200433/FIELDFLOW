@@ -110,6 +110,12 @@ export function createActivityApi({ baseUrl, supabase, fetchImpl = fetch }) {
     },
     heartbeat: body => request("/api/activity/heartbeat", {
       method: "POST", body: JSON.stringify(body)
+    }),
+    reportExtensionHealth: body => request("/api/activity/web-access/extension-health", {
+      method: "POST", body: JSON.stringify(body)
+    }),
+    recordWebAccessEvent: body => request("/api/activity/web-access/events", {
+      method: "POST", body: JSON.stringify(body)
     })
   };
 }

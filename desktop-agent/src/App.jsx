@@ -124,6 +124,7 @@ export default function App() {
   const [lastHeartbeat, setLastHeartbeat] = useState(null);
   const [currentApplication, setCurrentApplication] = useState(null);
   const [screenshotCaptureEnabled, setScreenshotCaptureEnabled] = useState(false);
+  const [webAccessPolicy, setWebAccessPolicy] = useState(null);
   const [updateStatus, setUpdateStatus] = useState(
     config.updatesEnabled ? "Waiting for automatic check" : "Not configured"
   );
@@ -178,18 +179,55 @@ export default function App() {
       });
       setLastHeartbeat(new Date());
       setScreenshotCaptureEnabled(Boolean(result.collectScreenshots));
+      const effectiveWebPolicy = result.webAccessPolicy?.ruleId
+        ? result.webAccessPolicy
+        : {
+            enabled: Boolean(result.websiteBlockingEnabled),
+            blockedDomains: result.blockedDomains || [],
+            blockedApplications: [],
+            activeOverrides: (result.activeOverrides || []).map(item => ({ resourceType: "domain", resourceKey: item.domain, accessEndsAt: item.overrideEndsAt })),
+            requireManagedExtension: false
+          };
+      setWebAccessPolicy(effectiveWebPolicy);
       setError(current => current.startsWith("Heartbeat delayed:") ? "" : current);
       await invoke("set_agent_state", {
         key: "blocklist_json",
         value: JSON.stringify({
-          blockedDomains: result.websiteBlockingEnabled ? (result.blockedDomains || []) : [],
-          overrides: result.activeOverrides || []
+          blockedDomains: effectiveWebPolicy.enabled ? (effectiveWebPolicy.blockedDomains || []) : [],
+          overrides: (effectiveWebPolicy.activeOverrides || [])
+            .filter(item => item.resourceType === "domain")
+            .map(item => ({ domain: item.resourceKey, overrideEndsAt: item.accessEndsAt }))
         })
       }).catch(() => null);
       await invoke("set_agent_state", {
         key: "screenshot_excluded_apps_json",
         value: JSON.stringify(result.collectScreenshots ? (result.screenshotExcludedApps || []) : [])
       }).catch(() => null);
+      if (effectiveWebPolicy.enabled && effectiveWebPolicy.requireManagedExtension) {
+        const rawExtensionHealth = await invoke("get_agent_state", { key: "browser_extension_heartbeat_json" }).catch(() => null);
+        let extensionHealth = null;
+        try { extensionHealth = rawExtensionHealth ? JSON.parse(rawExtensionHealth) : null; } catch { extensionHealth = null; }
+        const lastSeen = extensionHealth?.lastSeenAt ? new Date(extensionHealth.lastSeenAt).getTime() : 0;
+        const stale = !lastSeen || Date.now() - lastSeen > 5 * 60 * 1000;
+        await api.reportExtensionHealth({
+          deviceId: targetDeviceId,
+          browserName: extensionHealth?.browserName || "managed-browser",
+          extensionId: extensionHealth?.extensionId || "",
+          extensionVersion: extensionHealth?.extensionVersion || "",
+          status: stale ? "missing" : "installed",
+          lastSeenAt: extensionHealth?.lastSeenAt || null
+        }).catch(() => null);
+      }
+      const pendingEvent = await invoke("get_agent_state", { key: "pending_web_access_event_json" }).catch(() => null);
+      if (pendingEvent) {
+        try {
+          const event = JSON.parse(pendingEvent);
+          await api.recordWebAccessEvent({ ...event, deviceId: targetDeviceId });
+          await invoke("set_agent_state", { key: "pending_web_access_event_json", value: "" });
+        } catch {
+          // Keep the event queued for a later heartbeat.
+        }
+      }
       return result;
     } catch (heartbeatError) {
       if (isHeartbeatRateLimit(heartbeatError)) {
@@ -576,6 +614,26 @@ export default function App() {
         }
       }, Math.max(10, policy.sampleIntervalSeconds || 60) * 1000));
     }
+    if (account && deviceId && webAccessPolicy?.enabled) {
+      timers.current.push(window.setInterval(async () => {
+        const allowedApplications = new Set((webAccessPolicy.activeOverrides || [])
+          .filter(item => item.resourceType === "application" && (!item.accessEndsAt || new Date(item.accessEndsAt).getTime() > Date.now()))
+          .map(item => String(item.resourceKey).toLowerCase()));
+        const blockedApplications = (webAccessPolicy.blockedApplications || [])
+          .filter(application => !allowedApplications.has(String(application).toLowerCase()));
+        if (!blockedApplications.length) return;
+        try {
+          const blocked = await invoke("enforce_restricted_applications", { blockedApplications });
+          if (blocked) {
+            setError(`${blocked} is restricted by your organisation. Request temporary access in My Activity.`);
+            await api.recordWebAccessEvent({ deviceId, eventType: "application_blocked", resourceType: "application", resourceKey: blocked }).catch(() => null);
+          }
+        } catch (enforcementError) {
+          await agentLog("native_application_enforcement_failed", "warn");
+          setError(`Application restriction check failed: ${enforcementError}`);
+        }
+      }, 2000));
+    }
     if (session && policy.trackingEnabled && policy.collectScreenshots && screenshotCaptureEnabled) {
       timers.current.push(window.setInterval(async () => {
         if (screenshotting.current) return;
@@ -591,7 +649,7 @@ export default function App() {
       }, Math.max(180, policy.screenshotIntervalSeconds || 240) * 1000));
     }
     return clearTimers;
-  }, [account, clearTimers, deviceId, online, performSync, policy, reconcileWithServer, refreshQueue, screenshotCaptureEnabled, sendHeartbeat, session]);
+  }, [account, api, clearTimers, deviceId, online, performSync, policy, reconcileWithServer, refreshQueue, screenshotCaptureEnabled, sendHeartbeat, session, webAccessPolicy]);
 
   async function acknowledge(text) {
     await api.acknowledgePolicy({

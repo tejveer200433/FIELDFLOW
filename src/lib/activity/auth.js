@@ -5,7 +5,9 @@ export const ACTIVITY_PERMISSIONS = Object.freeze({
   viewSelf: "activity.view_self",
   viewTeam: "activity.view_team",
   viewAll: "activity.view_all",
-  managePolicies: "activity.policies.manage"
+  managePolicies: "activity.policies.manage",
+  reviewWebAccess: "activity.web_access.review",
+  manageWebAccess: "activity.web_access.manage"
 });
 
 export function activityCan(access, permission) {

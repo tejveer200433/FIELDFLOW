@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 $extensionRoot = $PSScriptRoot
 $repoRoot = Split-Path $extensionRoot -Parent
 $outputRoot = Join-Path $repoRoot "browser-extension-dist"
-$version = "0.3.0"
+$version = "0.4.0"
 if (-not $IconSource) {
   $IconSource = Join-Path $repoRoot "desktop-agent\src-tauri\icons\icon.png"
 }

@@ -11,8 +11,8 @@ async function readJson(url) {
 
 function checkSharedManifest(manifest) {
   assert.equal(manifest.manifest_version, 3);
-  assert.deepEqual(manifest.permissions, ["alarms", "storage", "tabs"]);
-  assert.deepEqual(manifest.host_permissions, ["http://127.0.0.1:38473/*"]);
+  assert.deepEqual(manifest.permissions, ["alarms", "storage", "tabs", "declarativeNetRequest"]);
+  assert.deepEqual(manifest.host_permissions, ["http://127.0.0.1:38473/*", "http://*/*", "https://*/*"]);
   assert.equal(manifest.incognito, "not_allowed");
   assert.deepEqual(Object.keys(manifest.icons).sort(), ["16", "32", "48", "128"].sort());
 }

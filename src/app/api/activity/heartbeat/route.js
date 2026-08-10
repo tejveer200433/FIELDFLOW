@@ -21,6 +21,11 @@ export async function POST(request) {
     });
     if (error) throwActivityDatabaseError(error);
     const [heartbeat, policy] = [rpcRow(data), await getActivePolicy(session.client, { required: false })];
+    const { data: effectiveWebPolicy, error: effectiveWebPolicyError } = await session.client.rpc("web_access_effective_policy", {
+      p_employee_id: session.profile.id,
+      p_device_id: body.deviceId
+    });
+    if (effectiveWebPolicyError && effectiveWebPolicyError.code !== "PGRST202") throw effectiveWebPolicyError;
     const { data: screenshotSetting, error: screenshotSettingError } = await session.client
       .from("device_screenshot_settings")
       .select("capture_enabled")
@@ -48,6 +53,7 @@ export async function POST(request) {
       websiteBlockingEnabled: Boolean(policy?.website_blocking_enabled),
       blockedDomains: policy?.website_blocking_enabled ? (policy?.blocked_domains || []) : [],
       activeOverrides,
+      webAccessPolicy: effectiveWebPolicy || null,
       collectScreenshots,
       screenshotIntervalSeconds: policy?.screenshot_interval_seconds || 240,
       screenshotExcludedApps: collectScreenshots ? (policy?.screenshot_excluded_apps || []) : []

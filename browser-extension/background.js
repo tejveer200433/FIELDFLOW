@@ -10,6 +10,37 @@ let lastQueuedDomain = null;
 let detectedBrowserName;
 let refreshInFlight = null;
 
+async function reportExtensionHealth() {
+  detectedBrowserName ||= await detectBrowserName();
+  try {
+    await fetch(`${CONFIG.bridgeUrl}/v1/extension-heartbeat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        browserName: detectedBrowserName,
+        extensionId: extensionApi.runtime.id,
+        extensionVersion: extensionApi.runtime.getManifest().version,
+        status: "installed",
+        recordedAt: new Date().toISOString()
+      })
+    });
+  } catch {
+    // The desktop agent may be closed. The next alarm retries automatically.
+  }
+}
+
+async function reportBlockedEvent(resourceType, resourceKey) {
+  try {
+    await fetch(`${CONFIG.bridgeUrl}/v1/web-access-event`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventType: resourceType === "application" ? "application_blocked" : "domain_blocked", resourceType, resourceKey })
+    });
+  } catch {
+    // Enforcement remains local if the agent is temporarily unavailable.
+  }
+}
+
 async function setStatus(state, message, domain = null) {
   await extensionApi.storage.local.set({
     [STATUS_KEY]: { state, message, domain, checkedAt: new Date().toISOString() }
@@ -142,16 +173,24 @@ extensionApi.runtime.onInstalled.addListener(() => {
   ensureSamplingAlarm().catch(() => {});
   refreshBlockingRules().catch(() => {});
   sampleAfterBrowserChange();
+  reportExtensionHealth();
 });
 extensionApi.runtime.onStartup.addListener(() => {
   ensureSamplingAlarm().catch(() => {});
   refreshBlockingRules().catch(() => {});
   sampleAfterBrowserChange();
+  reportExtensionHealth();
 });
 extensionApi.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === SAMPLE_ALARM) {
     sampleActiveWebsite().catch(() => {});
     refreshBlockingRules().catch(() => {});
+    reportExtensionHealth().catch(() => {});
+  }
+});
+extensionApi.runtime.onMessage.addListener(message => {
+  if (message?.type === "fieldflow-blocked" && typeof message.domain === "string") {
+    reportBlockedEvent("domain", message.domain.slice(0, 253));
   }
 });
 extensionApi.tabs.onActivated.addListener(sampleAfterBrowserChange);
@@ -161,3 +200,4 @@ extensionApi.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
 extensionApi.windows.onFocusChanged.addListener(windowId => {
   if (windowId !== extensionApi.windows.WINDOW_ID_NONE) sampleAfterBrowserChange();
 });
+reportExtensionHealth().catch(() => {});

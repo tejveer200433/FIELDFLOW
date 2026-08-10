@@ -159,6 +159,7 @@ pub fn run() {
             commands::set_input_collection_enabled,
             commands::get_screen_locked,
             commands::get_active_application,
+            commands::enforce_restricted_applications,
             commands::get_device_identity,
             commands::get_coding_context,
             commands::enqueue_sample,

@@ -52,6 +52,18 @@ pub fn get_active_application() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+pub fn enforce_restricted_applications(
+    blocked_applications: Vec<String>,
+) -> Result<Option<String>, String> {
+    if blocked_applications.len() > 100
+        || blocked_applications.iter().any(|value| value.len() > 120)
+    {
+        return Err("Restricted application policy is invalid.".to_string());
+    }
+    platform::terminate_foreground_if_restricted(&blocked_applications)
+}
+
+#[tauri::command]
 pub fn get_device_identity() -> Result<DeviceIdentity, String> {
     platform::device_identity()
 }
