@@ -1,5 +1,5 @@
-import { ApiError, apiFailure, requireAnyPermission, requirePermission } from "@/lib/supabaseServer";
-import { mapSubmission } from "@/lib/projectData";
+import { ApiError, apiFailure, requireAnyPermission, requirePermission } from "@/backend/supabase/supabaseServer";
+import { mapSubmission } from "@/backend/projects/projectData";
 
 const submissionSelect = "*,submission_files(*)";
 

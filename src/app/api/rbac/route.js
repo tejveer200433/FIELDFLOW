@@ -1,5 +1,5 @@
-import { ApiError, apiFailure, requireAnyPermission } from "@/lib/supabaseServer";
-import { hasPermission } from "@/lib/permissions";
+import { ApiError, apiFailure, requireAnyPermission } from "@/backend/supabase/supabaseServer";
+import { hasPermission } from "@/shared/permissions";
 
 export const dynamic = "force-dynamic";
 

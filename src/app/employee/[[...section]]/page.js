@@ -1,8 +1,8 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import EmployeeShell from "@/components/EmployeeShell";
-import EmployeeWorkspace from "@/components/EmployeeWorkspace";
+import EmployeeShell from "@/frontend/components/layout/EmployeeShell";
+import EmployeeWorkspace from "@/frontend/features/employee/components/EmployeeWorkspace";
 
 export default function EmployeePage() {
   const { section = [] } = useParams();

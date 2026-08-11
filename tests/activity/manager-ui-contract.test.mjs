@@ -5,11 +5,11 @@ import { join } from "node:path";
 
 const root = process.cwd();
 const read = path => readFileSync(join(root, path), "utf8");
-const page = read("src/components/activity/ManagerTeamActivityPage.js");
-const client = read("src/lib/activity/managerClient.js");
-const shell = read("src/components/RoleShell.js");
-const table = read("src/components/activity/TeamActivityTable.js");
-const drawer = read("src/components/activity/TeamActivityEmployeeDrawer.js");
+const page = read("src/frontend/features/activity/components/ManagerTeamActivityPage.js");
+const client = read("src/frontend/features/activity/api/managerClient.js");
+const shell = read("src/frontend/components/layout/RoleShell.js");
+const table = read("src/frontend/features/activity/components/TeamActivityTable.js");
+const drawer = read("src/frontend/features/activity/components/TeamActivityEmployeeDrawer.js");
 
 test("manager activity is a separate guarded static route", () => {
   assert.match(read("src/app/manager/activity/page.js"), /<RoleShell role="manager"><ManagerTeamActivityPage \/><\/RoleShell>/);
@@ -40,7 +40,7 @@ test("team data is never populated with demo or unrestricted records", () => {
 });
 
 test("filters debounce search, reset pagination, and preserve safe server filters", () => {
-  const filters = read("src/components/activity/TeamActivityFilters.js");
+  const filters = read("src/frontend/features/activity/components/TeamActivityFilters.js");
   assert.match(filters, /window\.setTimeout\([\s\S]*350/);
   assert.match(filters, /window\.clearTimeout\(timer\)/);
   assert.match(page, /setNextCursor\(null\)/);
@@ -83,7 +83,7 @@ test("live polling is overlap-safe, visibility-aware, and cleaned up", () => {
 });
 
 test("rate limit and safe access errors have dedicated UI handling", () => {
-  const errorState = read("src/components/activity/TeamActivityErrorState.js");
+  const errorState = read("src/frontend/features/activity/components/TeamActivityErrorState.js");
   assert.match(errorState, /error\?\.status === 429/);
   assert.match(errorState, /error\?\.status === 403/);
   assert.match(client, /response\.headers\.get\("Retry-After"\)/);

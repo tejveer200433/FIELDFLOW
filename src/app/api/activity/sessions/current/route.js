@@ -1,7 +1,7 @@
-import { requireActivitySession, ACTIVITY_PERMISSIONS } from "@/lib/activity/auth";
-import { getActivePolicy, mapDevice, mapPolicy, mapSession } from "@/lib/activity/data";
-import { enforceActivityRateLimit } from "@/lib/activity/rateLimit";
-import { activityFailure, activitySuccess } from "@/lib/activity/responses";
+import { requireActivitySession, ACTIVITY_PERMISSIONS } from "@/backend/activity/auth";
+import { getActivePolicy, mapDevice, mapPolicy, mapSession } from "@/backend/activity/data";
+import { enforceActivityRateLimit } from "@/backend/activity/rateLimit";
+import { activityFailure, activitySuccess } from "@/backend/activity/responses";
 
 export const dynamic = "force-dynamic";
 

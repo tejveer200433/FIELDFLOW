@@ -5,7 +5,7 @@ import {
   notifyEvent,
   requireAnyPermission,
   resolveUserScope
-} from "@/lib/supabaseServer";
+} from "@/backend/supabase/supabaseServer";
 
 export const dynamic = "force-dynamic";
 

@@ -1,4 +1,4 @@
-import { ApiError, apiFailure, assertUserInScope, notifyEvent, requireAnyPermission, requirePermission, resolveUserScope } from "@/lib/supabaseServer";
+import { ApiError, apiFailure, assertUserInScope, notifyEvent, requireAnyPermission, requirePermission, resolveUserScope } from "@/backend/supabase/supabaseServer";
 
 export const dynamic = "force-dynamic";
 const expenseSelect = "*,profiles!expenses_employee_id_fkey(full_name)";

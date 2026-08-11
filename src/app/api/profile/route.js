@@ -1,4 +1,4 @@
-import { apiFailure, mapProfile, requireSession } from "@/lib/supabaseServer";
+import { apiFailure, mapProfile, requireSession } from "@/backend/supabase/supabaseServer";
 
 export async function GET(request) {
   try {

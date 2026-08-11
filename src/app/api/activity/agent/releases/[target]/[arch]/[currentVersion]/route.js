@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { resolveAgentRelease } from "@/lib/activity/agentRelease.mjs";
+import { resolveAgentRelease } from "@/backend/activity/agentRelease.mjs";
 
 export const dynamic = "force-dynamic";
 

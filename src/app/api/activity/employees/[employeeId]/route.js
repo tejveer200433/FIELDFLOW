@@ -1,9 +1,9 @@
-import { assertActivityEmployee, requireActivitySession, resolveActivityScope, ACTIVITY_PERMISSIONS } from "@/lib/activity/auth";
-import { getActivePolicy, getActivityProfiles, mapDevice, mapScreenshot, mapSession } from "@/lib/activity/data";
-import { enforceActivityRateLimit } from "@/lib/activity/rateLimit";
-import { ActivityError, activityFailure, activitySuccess } from "@/lib/activity/responses";
-import { deriveActivityStatus } from "@/lib/activity/status.mjs";
-import { isUuid, parseEmployeeFilters } from "@/lib/activity/validation.mjs";
+import { assertActivityEmployee, requireActivitySession, resolveActivityScope, ACTIVITY_PERMISSIONS } from "@/backend/activity/auth";
+import { getActivePolicy, getActivityProfiles, mapDevice, mapScreenshot, mapSession } from "@/backend/activity/data";
+import { enforceActivityRateLimit } from "@/backend/activity/rateLimit";
+import { ActivityError, activityFailure, activitySuccess } from "@/backend/activity/responses";
+import { deriveActivityStatus } from "@/backend/activity/status.mjs";
+import { isUuid, parseEmployeeFilters } from "@/backend/activity/validation.mjs";
 
 export const dynamic = "force-dynamic";
 

@@ -5,11 +5,11 @@ import { join } from "node:path";
 
 const root = process.cwd();
 const read = path => readFileSync(join(root, path), "utf8");
-const page = read("src/components/activity/EmployeeActivityPage.js");
-const client = read("src/lib/activity/client.js");
-const shell = read("src/components/EmployeeShell.js");
-const deviceList = read("src/components/activity/ActivityDeviceList.js");
-const privacy = read("src/components/activity/ActivityPrivacyNotice.js");
+const page = read("src/frontend/features/activity/components/EmployeeActivityPage.js");
+const client = read("src/frontend/features/activity/api/client.js");
+const shell = read("src/frontend/components/layout/EmployeeShell.js");
+const deviceList = read("src/frontend/features/activity/components/ActivityDeviceList.js");
+const privacy = read("src/frontend/features/activity/components/ActivityPrivacyNotice.js");
 
 test("employee activity is a separate permission-controlled static route", () => {
   assert.match(read("src/app/employee/activity/page.js"), /<EmployeeShell><EmployeeActivityPage \/><\/EmployeeShell>/);
@@ -25,14 +25,14 @@ test("navigation appends My Activity without changing permission filtering", () 
 });
 
 test("browser client is activity-scoped and reuses authenticatedFetch", () => {
-  assert.match(client, /import \{ authenticatedFetch \} from "@\/lib\/apiClient"/);
+  assert.match(client, /import \{ authenticatedFetch \} from "@\/frontend\/lib\/apiClient"/);
   assert.match(client, /authenticatedFetch\(`\/api\/activity\$\{path\}`/);
   assert.doesNotMatch(client, /supabase|service.?role/i);
   assert.doesNotMatch(client, /\/api\/(projects|tasks|attendance|locations)/);
 });
 
 test("session controls are explicit and do not auto-start", () => {
-  const current = read("src/components/activity/CurrentTrackingSession.js");
+  const current = read("src/frontend/features/activity/components/CurrentTrackingSession.js");
   assert.match(current, /"Start tracking"/);
   assert.match(page, /window\.confirm\("Stop your current tracking session\?"\)/);
   assert.doesNotMatch(current, /useEffect\([\s\S]{0,200}onStart\(/);
@@ -40,7 +40,7 @@ test("session controls are explicit and do not auto-start", () => {
 });
 
 test("monitoring and empty states are represented", () => {
-  const status = read("src/lib/activity/status.js");
+  const status = read("src/frontend/features/activity/utils/status.js");
   for (const label of [
     "Tracking error", "Monitoring unavailable", "Monitoring disabled by organisation",
     "Acknowledgement required", "Device offline", "Tracking active", "Ready to track"
@@ -63,7 +63,7 @@ test("employee device controls are explicitly scoped to the signed-in employee",
 });
 
 test("aggregate keyboard and mouse counts are returned and shown without event details", () => {
-  const inputSummary = read("src/components/activity/InputActivitySummary.js");
+  const inputSummary = read("src/frontend/features/activity/components/InputActivitySummary.js");
   const employeeRoute = read("src/app/api/activity/employees/[employeeId]/route.js");
   assert.match(employeeRoute, /keyboard_event_count,mouse_event_count/);
   assert.match(employeeRoute, /todayInputActivity/);
@@ -74,7 +74,7 @@ test("aggregate keyboard and mouse counts are returned and shown without event d
 });
 
 test("website usage renders hostnames without full URL or page content fields", () => {
-  const website = read("src/components/activity/WebsiteUsageSummary.js");
+  const website = read("src/frontend/features/activity/components/WebsiteUsageSummary.js");
   const route = read("src/app/api/activity/employees/[employeeId]/route.js");
   assert.match(route, /website_activity_samples/);
   assert.match(route, /websiteUsage/);
@@ -91,5 +91,5 @@ test("polling is visibility-aware, overlap-safe, and cleaned up", () => {
 
 test("rate-limit errors keep safe API code and retry information", () => {
   assert.match(client, /response\.headers\.get\("Retry-After"\)/);
-  assert.match(read("src/components/activity/ActivityErrorState.js"), /error\?\.status === 429/);
+  assert.match(read("src/frontend/features/activity/components/ActivityErrorState.js"), /error\?\.status === 429/);
 });

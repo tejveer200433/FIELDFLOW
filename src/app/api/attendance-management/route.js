@@ -4,8 +4,8 @@ import {
   assertUserInScope,
   requireAnyPermission,
   resolveUserScope
-} from "@/lib/supabaseServer";
-import { hasPermission } from "@/lib/permissions";
+} from "@/backend/supabase/supabaseServer";
+import { hasPermission } from "@/shared/permissions";
 
 export const dynamic = "force-dynamic";
 

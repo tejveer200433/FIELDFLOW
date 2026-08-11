@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { requireActivitySession, ACTIVITY_PERMISSIONS } from "@/lib/activity/auth";
-import { getAcknowledgement, mapDevice, mapPolicy, rpcRow, throwActivityDatabaseError, getActivePolicy } from "@/lib/activity/data";
-import { enforceActivityRateLimit } from "@/lib/activity/rateLimit";
-import { activityFailure, activitySuccess, readActivityJson } from "@/lib/activity/responses";
-import { parseDeviceRegistration } from "@/lib/activity/validation.mjs";
+import { requireActivitySession, ACTIVITY_PERMISSIONS } from "@/backend/activity/auth";
+import { getAcknowledgement, mapDevice, mapPolicy, rpcRow, throwActivityDatabaseError, getActivePolicy } from "@/backend/activity/data";
+import { enforceActivityRateLimit } from "@/backend/activity/rateLimit";
+import { activityFailure, activitySuccess, readActivityJson } from "@/backend/activity/responses";
+import { parseDeviceRegistration } from "@/backend/activity/validation.mjs";
 
 export const dynamic = "force-dynamic";
 

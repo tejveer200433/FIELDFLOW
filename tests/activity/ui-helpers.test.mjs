@@ -9,7 +9,7 @@ async function importSource(path) {
 }
 
 test("activity durations and intervals are human readable", async () => {
-  const { formatDuration, formatInterval, formatPercentage } = await importSource("src/lib/activity/formatters.js");
+  const { formatDuration, formatInterval, formatPercentage } = await importSource("src/frontend/features/activity/utils/formatters.js");
   assert.equal(formatDuration(7 * 3600 + 18 * 60), "7h 18m");
   assert.equal(formatDuration(42 * 60), "42m");
   assert.equal(formatDuration(0), "0m");
@@ -19,7 +19,7 @@ test("activity durations and intervals are human readable", async () => {
 });
 
 test("stale heartbeat is offline and recent heartbeat allows active status", async () => {
-  const { deriveMonitoringStatus, isHeartbeatStale } = await importSource("src/lib/activity/status.js");
+  const { deriveMonitoringStatus, isHeartbeatStale } = await importSource("src/frontend/features/activity/utils/status.js");
   const now = Date.parse("2026-07-28T12:00:00.000Z");
   assert.equal(isHeartbeatStale("2026-07-28T11:55:00.000Z", 60, now), true);
   const base = {
@@ -49,7 +49,7 @@ test("stale heartbeat is offline and recent heartbeat allows active status", asy
 });
 
 test("acknowledgement state blocks readiness", async () => {
-  const { deriveMonitoringStatus } = await importSource("src/lib/activity/status.js");
+  const { deriveMonitoringStatus } = await importSource("src/frontend/features/activity/utils/status.js");
   assert.equal(deriveMonitoringStatus({
     policy: {
       trackingEnabled: true,

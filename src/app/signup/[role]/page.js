@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import AuthScreen from "@/components/AuthScreen";
+import AuthScreen from "@/frontend/features/auth/components/AuthScreen";
 
 export default function SignupPage() {
   const { role } = useParams();

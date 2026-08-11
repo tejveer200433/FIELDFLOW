@@ -4,7 +4,7 @@ import {
   getTeamMemberIds,
   requireAnyPermission,
   requirePermission
-} from "@/lib/supabaseServer";
+} from "@/backend/supabase/supabaseServer";
 
 export const dynamic = "force-dynamic";
 

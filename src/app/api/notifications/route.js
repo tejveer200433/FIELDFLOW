@@ -1,4 +1,4 @@
-import { ApiError, apiFailure, requireSession } from "@/lib/supabaseServer";
+import { ApiError, apiFailure, requireSession } from "@/backend/supabase/supabaseServer";
 
 export const dynamic = "force-dynamic";
 const map = row => ({

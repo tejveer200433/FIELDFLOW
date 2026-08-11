@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { compareAgentVersions, resolveAgentRelease } from "../../src/lib/activity/agentRelease.mjs";
+import { compareAgentVersions, resolveAgentRelease } from "../../src/backend/activity/agentRelease.mjs";
 
 const configured = {
   ACTIVITY_AGENT_RELEASE_VERSION: "0.4.0",

@@ -1,5 +1,5 @@
-import { ApiError, apiFailure, requireAnyPermission, requirePermission } from "@/lib/supabaseServer";
-import { mapAssignment } from "@/lib/projectData";
+import { ApiError, apiFailure, requireAnyPermission, requirePermission } from "@/backend/supabase/supabaseServer";
+import { mapAssignment } from "@/backend/projects/projectData";
 
 const assignmentSelect = "*,employee:profiles!work_assignments_employee_id_fkey(full_name,email),reviewer:profiles!work_assignments_reviewer_id_fkey(full_name,email),work_submissions(*,submission_files(*))";
 const employeeStatuses = ["Not Started", "In Progress", "Submitted for Review"];

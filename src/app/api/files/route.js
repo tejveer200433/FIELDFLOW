@@ -1,4 +1,4 @@
-import { ApiError, apiFailure, requireAnyPermission } from "@/lib/supabaseServer";
+import { ApiError, apiFailure, requireAnyPermission } from "@/backend/supabase/supabaseServer";
 
 export async function GET(request) {
   try {

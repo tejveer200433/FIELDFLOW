@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { KeyRound, Zap } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/frontend/lib/supabase";
 
 // Supabase exchanges the recovery link's code for a session asynchronously, in the
 // background, right after the client is created -- it is not guaranteed to be ready the

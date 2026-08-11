@@ -7,12 +7,12 @@ const root = process.cwd();
 const read = path => readFileSync(join(root, path), "utf8");
 
 test("access-context failures do not fall back to legacy role permissions", () => {
-  for (const path of ["src/lib/supabaseServer.js", "src/components/AuthScreen.js"]) {
+  for (const path of ["src/backend/supabase/supabaseServer.js", "src/frontend/features/auth/components/AuthScreen.js"]) {
     const source = read(path);
     assert.doesNotMatch(source, /legacyAccess/);
     assert.match(source, /permissions could not be verified/i);
   }
-  const guard = read("src/lib/authClient.js");
+  const guard = read("src/frontend/lib/authClient.js");
   assert.doesNotMatch(guard, /legacyAccess/);
   assert.match(guard, /error=permissions/);
 });
@@ -34,13 +34,13 @@ test("team activity heartbeat and sample state must match the active session", (
 });
 
 test("employee application percentages use the selected range total", () => {
-  const source = read("src/components/activity/EmployeeActivityPage.js");
+  const source = read("src/frontend/features/activity/components/EmployeeActivityPage.js");
   assert.match(source, /const rangeTrackedSeconds = useMemo/);
   assert.match(source, /trackedSeconds={rangeTrackedSeconds}/);
 });
 
 test("manager dashboard exposes service failures and uses the workspace day", () => {
-  const source = read("src/components/ManagerWorkspace.js");
+  const source = read("src/frontend/features/dashboard/components/ManagerDashboard.js");
   assert.doesNotMatch(source, /\.catch\(\(\) => \(\{ data: \[\] \}\)\)/);
   assert.match(source, /function localDayKey/);
   assert.match(source, /Some services could not be loaded/);

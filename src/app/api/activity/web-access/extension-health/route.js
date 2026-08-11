@@ -1,6 +1,6 @@
-import { requireActivitySession, ACTIVITY_PERMISSIONS, resolveActivityScope } from "@/lib/activity/auth";
-import { enforceActivityRateLimit } from "@/lib/activity/rateLimit";
-import { ActivityError, activityFailure, activitySuccess, readActivityJson } from "@/lib/activity/responses";
+import { requireActivitySession, ACTIVITY_PERMISSIONS, resolveActivityScope } from "@/backend/activity/auth";
+import { enforceActivityRateLimit } from "@/backend/activity/rateLimit";
+import { ActivityError, activityFailure, activitySuccess, readActivityJson } from "@/backend/activity/responses";
 
 export const dynamic = "force-dynamic";
 const map = row => ({ id: row.id, employeeId: row.employee_id, deviceId: row.device_id, browserName: row.browser_name, extensionId: row.extension_id, extensionVersion: row.extension_version, status: row.status, lastSeenAt: row.last_seen_at, missingSince: row.missing_since, updatedAt: row.updated_at });

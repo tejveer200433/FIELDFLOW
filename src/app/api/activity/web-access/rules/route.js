@@ -1,7 +1,7 @@
-import { getActivityProfiles } from "@/lib/activity/data";
-import { activityCan, assertActivityEmployee, requireActivitySession, ACTIVITY_PERMISSIONS, resolveActivityScope } from "@/lib/activity/auth";
-import { ActivityError, activityFailure, activitySuccess, readActivityJson } from "@/lib/activity/responses";
-import { parseWebAccessRule } from "@/lib/activity/webAccess.mjs";
+import { getActivityProfiles } from "@/backend/activity/data";
+import { activityCan, assertActivityEmployee, requireActivitySession, ACTIVITY_PERMISSIONS, resolveActivityScope } from "@/backend/activity/auth";
+import { ActivityError, activityFailure, activitySuccess, readActivityJson } from "@/backend/activity/responses";
+import { parseWebAccessRule } from "@/backend/activity/webAccess.mjs";
 
 export const dynamic = "force-dynamic";
 const select = "id,name,scope_type,scope_id,enforcement_enabled,priority,blocked_categories,blocked_domains,allowed_domains,blocked_applications,schedule_timezone,schedule_days,schedule_start,schedule_end,require_managed_extension,enabled,created_at,updated_at";

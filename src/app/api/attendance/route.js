@@ -1,5 +1,5 @@
-import { ApiError, apiFailure, assertUserInScope, notifyEvent, requireAnyPermission, requirePermission, resolveUserScope } from "@/lib/supabaseServer";
-import { formatDuration } from "@/lib/time";
+import { ApiError, apiFailure, assertUserInScope, notifyEvent, requireAnyPermission, requirePermission, resolveUserScope } from "@/backend/supabase/supabaseServer";
+import { formatDuration } from "@/shared/time";
 
 export const dynamic = "force-dynamic";
 const validLocation = value => value && Number.isFinite(Number(value.latitude)) && Number.isFinite(Number(value.longitude));

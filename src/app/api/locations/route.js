@@ -1,4 +1,4 @@
-import { ApiError, apiFailure, requireAnyPermission, requirePermission, resolveUserScope } from "@/lib/supabaseServer";
+import { ApiError, apiFailure, requireAnyPermission, requirePermission, resolveUserScope } from "@/backend/supabase/supabaseServer";
 
 export const dynamic = "force-dynamic";
 const locationSelect = "*,profiles!employee_locations_employee_id_fkey(full_name)";

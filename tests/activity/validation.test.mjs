@@ -14,7 +14,7 @@ import {
   parseSessionStart,
   parseSessionStop,
   parseTeamFilters
-} from "../../src/lib/activity/validation.mjs";
+} from "../../src/backend/activity/validation.mjs";
 
 const deviceId = "11111111-1111-4111-8111-111111111111";
 const sessionId = "22222222-2222-4222-8222-222222222222";

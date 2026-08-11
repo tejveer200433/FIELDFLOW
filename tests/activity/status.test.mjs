@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { deriveActivityStatus } from "../../src/lib/activity/status.mjs";
+import { deriveActivityStatus } from "../../src/backend/activity/status.mjs";
 
 const now = Date.parse("2026-07-28T12:00:00.000Z");
 const session = { status: "active", ended_at: null };

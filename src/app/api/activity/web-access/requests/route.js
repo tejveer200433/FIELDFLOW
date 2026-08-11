@@ -1,7 +1,7 @@
-import { activityCan, requireActivitySession, ACTIVITY_PERMISSIONS, resolveActivityScope } from "@/lib/activity/auth";
-import { enforceActivityRateLimit } from "@/lib/activity/rateLimit";
-import { activityFailure, activitySuccess, readActivityJson } from "@/lib/activity/responses";
-import { parseWebAccessRequest, parseWebAccessReview } from "@/lib/activity/webAccess.mjs";
+import { activityCan, requireActivitySession, ACTIVITY_PERMISSIONS, resolveActivityScope } from "@/backend/activity/auth";
+import { enforceActivityRateLimit } from "@/backend/activity/rateLimit";
+import { activityFailure, activitySuccess, readActivityJson } from "@/backend/activity/responses";
+import { parseWebAccessRequest, parseWebAccessReview } from "@/backend/activity/webAccess.mjs";
 
 export const dynamic = "force-dynamic";
 const select = "id,employee_id,device_id,resource_type,resource_key,reason,project_id,task_id,requested_minutes,requested_scope,status,granted_minutes,approval_scope,access_starts_at,access_ends_at,reviewer_comment,reviewed_by,reviewed_at,created_at";

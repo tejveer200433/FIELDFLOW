@@ -1,8 +1,8 @@
-import { assertActivityEmployee, requireActivitySession, resolveActivityScope, ACTIVITY_PERMISSIONS } from "@/lib/activity/auth";
-import { decodeCursor, mapDevice, pageResult } from "@/lib/activity/data";
-import { enforceActivityRateLimit } from "@/lib/activity/rateLimit";
-import { activityFailure, activitySuccess } from "@/lib/activity/responses";
-import { parseDeviceFilters } from "@/lib/activity/validation.mjs";
+import { assertActivityEmployee, requireActivitySession, resolveActivityScope, ACTIVITY_PERMISSIONS } from "@/backend/activity/auth";
+import { decodeCursor, mapDevice, pageResult } from "@/backend/activity/data";
+import { enforceActivityRateLimit } from "@/backend/activity/rateLimit";
+import { activityFailure, activitySuccess } from "@/backend/activity/responses";
+import { parseDeviceFilters } from "@/backend/activity/validation.mjs";
 
 export const dynamic = "force-dynamic";
 

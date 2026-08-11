@@ -35,7 +35,7 @@ test("notify_event resolves recipients as supervisor-with-permission union owner
 });
 
 test("notifyEvent helper swallows failures so a notification error never blocks the action it reports on", () => {
-  const source = read("src/lib/supabaseServer.js");
+  const source = read("src/backend/supabase/supabaseServer.js");
   assert.match(source, /export async function notifyEvent\(client, \{/);
   assert.match(source, /await client\.rpc\("notify_event", \{/);
   assert.match(source, /export async function notifyEvent\(client, \{[\s\S]*?try \{[\s\S]*?\} catch \(error\) \{[\s\S]*?console\.error\([\s\S]*?\}\n\}/);
@@ -76,7 +76,7 @@ test("the notifications route relies on RLS for recipient scoping and validates 
 });
 
 test("RoleShell renders a real unread badge and notification list instead of the static placeholder", () => {
-  const source = read("src/components/RoleShell.js");
+  const source = read("src/frontend/components/layout/RoleShell.js");
   assert.match(source, /useNotifications\(\)/);
   assert.match(source, /\{unreadCount > 0 && <span[\s\S]{0,120}bg-rose-500/);
   assert.match(source, /\{unreadCount > 9 \? "9\+" : unreadCount\}/);

@@ -1,4 +1,4 @@
-import { ApiError, apiFailure, requireAnyPermission, requirePermission } from "@/lib/supabaseServer";
+import { ApiError, apiFailure, requireAnyPermission, requirePermission } from "@/backend/supabase/supabaseServer";
 
 export const dynamic = "force-dynamic";
 

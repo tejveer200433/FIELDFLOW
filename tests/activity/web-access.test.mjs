@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { normalizeResourceKey, parseWebAccessRequest, parseWebAccessRule, parseWebAccessReview } from "../../src/lib/activity/webAccess.mjs";
+import { normalizeResourceKey, parseWebAccessRequest, parseWebAccessRule, parseWebAccessReview } from "../../src/backend/activity/webAccess.mjs";
 
 test("web access resources are normalized without collecting URLs", () => {
   assert.equal(normalizeResourceKey("domain", "https://www.YouTube.com/watch?v=private"), "youtube.com");

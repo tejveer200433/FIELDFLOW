@@ -9,7 +9,7 @@ async function importSource(path) {
 }
 
 test("team status helper supports all neutral states", async () => {
-  const { isTeamActivityStatus, statusTone } = await importSource("src/lib/activity/teamStatus.js");
+  const { isTeamActivityStatus, statusTone } = await importSource("src/frontend/features/activity/utils/teamStatus.js");
   for (const status of ["active", "idle", "offline", "not_tracking"]) assert.equal(isTeamActivityStatus(status), true);
   assert.equal(isTeamActivityStatus("unproductive"), false);
   assert.equal(statusTone("active"), "emerald");
@@ -18,7 +18,7 @@ test("team status helper supports all neutral states", async () => {
 });
 
 test("loaded-row filtering is safe and deterministic", async () => {
-  const { filterLoadedTeamRows } = await importSource("src/lib/activity/teamStatus.js");
+  const { filterLoadedTeamRows } = await importSource("src/frontend/features/activity/utils/teamStatus.js");
   const rows = [
     { employeeId: "1", employeeName: "Asha Rao", deviceStatus: "active", currentStatus: "active", activeSessionId: "s1" },
     { employeeId: "2", employeeName: "Dev Singh", deviceStatus: "active", currentStatus: "offline", activeSessionId: "s2" },
@@ -30,7 +30,7 @@ test("loaded-row filtering is safe and deterministic", async () => {
 });
 
 test("cursor pages merge without duplicate employees", async () => {
-  const { mergeTeamPages } = await importSource("src/lib/activity/teamStatus.js");
+  const { mergeTeamPages } = await importSource("src/frontend/features/activity/utils/teamStatus.js");
   const merged = mergeTeamPages(
     [{ employeeId: "1", employeeName: "Old" }],
     [{ employeeId: "1", employeeName: "Updated" }, { employeeId: "2", employeeName: "New" }]

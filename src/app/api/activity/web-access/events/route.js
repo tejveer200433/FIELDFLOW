@@ -1,7 +1,7 @@
-import { requireActivitySession, ACTIVITY_PERMISSIONS, resolveActivityScope } from "@/lib/activity/auth";
-import { enforceActivityRateLimit } from "@/lib/activity/rateLimit";
-import { activityFailure, activitySuccess, readActivityJson } from "@/lib/activity/responses";
-import { parseWebAccessEvent } from "@/lib/activity/webAccess.mjs";
+import { requireActivitySession, ACTIVITY_PERMISSIONS, resolveActivityScope } from "@/backend/activity/auth";
+import { enforceActivityRateLimit } from "@/backend/activity/rateLimit";
+import { activityFailure, activitySuccess, readActivityJson } from "@/backend/activity/responses";
+import { parseWebAccessEvent } from "@/backend/activity/webAccess.mjs";
 
 export const dynamic = "force-dynamic";
 

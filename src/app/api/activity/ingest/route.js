@@ -1,4 +1,4 @@
-import { requireActivitySession, ACTIVITY_PERMISSIONS } from "@/lib/activity/auth";
+import { requireActivitySession, ACTIVITY_PERMISSIONS } from "@/backend/activity/auth";
 import {
   getAcknowledgement,
   getActivePolicy,
@@ -6,10 +6,10 @@ import {
   requireOwnedSession,
   throwActivityDatabaseError,
   writeActivityAudit
-} from "@/lib/activity/data";
-import { enforceActivityRateLimit } from "@/lib/activity/rateLimit";
-import { ActivityError, activityFailure, activitySuccess, readActivityJson } from "@/lib/activity/responses";
-import { parseSampleBatch } from "@/lib/activity/validation.mjs";
+} from "@/backend/activity/data";
+import { enforceActivityRateLimit } from "@/backend/activity/rateLimit";
+import { ActivityError, activityFailure, activitySuccess, readActivityJson } from "@/backend/activity/responses";
+import { parseSampleBatch } from "@/backend/activity/validation.mjs";
 
 export const dynamic = "force-dynamic";
 

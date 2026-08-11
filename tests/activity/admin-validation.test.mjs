@@ -9,7 +9,7 @@ async function importSource(path) {
 }
 
 test("admin policy defaults match Phase 1 safe defaults", async () => {
-  const { policyFormValues } = await importSource("src/lib/activity/adminValidation.js");
+  const { policyFormValues } = await importSource("src/frontend/features/activity/utils/adminValidation.js");
   assert.deepEqual(policyFormValues(null), {
     trackingEnabled: false,
     idleThresholdSeconds: 300,
@@ -30,7 +30,7 @@ test("admin policy defaults match Phase 1 safe defaults", async () => {
 });
 
 test("policy interval and retention ranges match server validation", async () => {
-  const { policyFormValues, validatePolicy } = await importSource("src/lib/activity/adminValidation.js");
+  const { policyFormValues, validatePolicy } = await importSource("src/frontend/features/activity/utils/adminValidation.js");
   const valid = policyFormValues(null);
   assert.deepEqual(validatePolicy(valid), {});
   assert.ok(validatePolicy({ ...valid, sampleIntervalSeconds: 9 }).sampleIntervalSeconds);
@@ -42,7 +42,7 @@ test("policy interval and retention ranges match server validation", async () =>
 });
 
 test("new versions report exact changed fields", async () => {
-  const { policyChanges } = await importSource("src/lib/activity/adminValidation.js");
+  const { policyChanges } = await importSource("src/frontend/features/activity/utils/adminValidation.js");
   const current = {
     trackingEnabled: false,
     idleThresholdSeconds: 300,

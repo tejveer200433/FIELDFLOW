@@ -1,5 +1,5 @@
-import { ApiError, apiFailure, requireAnyPermission, requirePermission } from "@/lib/supabaseServer";
-import { mapProject, projectSelect } from "@/lib/projectData";
+import { ApiError, apiFailure, requireAnyPermission, requirePermission } from "@/backend/supabase/supabaseServer";
+import { mapProject, projectSelect } from "@/backend/projects/projectData";
 
 export const dynamic = "force-dynamic";
 const allowedCategory = ["Visit", "Installation", "Service", "Sales", "Collection", "Software", "Other"];

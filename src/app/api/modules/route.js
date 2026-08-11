@@ -1,5 +1,5 @@
-import { ApiError, apiFailure, requirePermission } from "@/lib/supabaseServer";
-import { mapModule } from "@/lib/projectData";
+import { ApiError, apiFailure, requirePermission } from "@/backend/supabase/supabaseServer";
+import { mapModule } from "@/backend/projects/projectData";
 
 const moduleSelect = "*,work_assignments(*,employee:profiles!work_assignments_employee_id_fkey(full_name,email),reviewer:profiles!work_assignments_reviewer_id_fkey(full_name,email),work_submissions(*,submission_files(*)))";
 

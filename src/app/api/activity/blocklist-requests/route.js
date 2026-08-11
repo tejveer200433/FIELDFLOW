@@ -1,8 +1,8 @@
-import { activityCan, requireActivitySession, ACTIVITY_PERMISSIONS } from "@/lib/activity/auth";
-import { mapBlocklistOverrideRequest, rpcRow, throwActivityDatabaseError } from "@/lib/activity/data";
-import { enforceActivityRateLimit } from "@/lib/activity/rateLimit";
-import { ActivityError, activityFailure, activitySuccess, readActivityJson } from "@/lib/activity/responses";
-import { parseBlocklistOverrideRequest, parseBlocklistOverrideReview } from "@/lib/activity/validation.mjs";
+import { activityCan, requireActivitySession, ACTIVITY_PERMISSIONS } from "@/backend/activity/auth";
+import { mapBlocklistOverrideRequest, rpcRow, throwActivityDatabaseError } from "@/backend/activity/data";
+import { enforceActivityRateLimit } from "@/backend/activity/rateLimit";
+import { ActivityError, activityFailure, activitySuccess, readActivityJson } from "@/backend/activity/responses";
+import { parseBlocklistOverrideRequest, parseBlocklistOverrideReview } from "@/backend/activity/validation.mjs";
 
 export const dynamic = "force-dynamic";
 

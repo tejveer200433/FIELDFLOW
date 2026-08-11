@@ -1,8 +1,8 @@
-import { requireActivitySession, ACTIVITY_PERMISSIONS } from "@/lib/activity/auth";
-import { requireOwnedSession, throwActivityDatabaseError } from "@/lib/activity/data";
-import { enforceActivityRateLimit } from "@/lib/activity/rateLimit";
-import { activityFailure, activitySuccess, readActivityJson } from "@/lib/activity/responses";
-import { parseWebsiteSampleBatch } from "@/lib/activity/validation.mjs";
+import { requireActivitySession, ACTIVITY_PERMISSIONS } from "@/backend/activity/auth";
+import { requireOwnedSession, throwActivityDatabaseError } from "@/backend/activity/data";
+import { enforceActivityRateLimit } from "@/backend/activity/rateLimit";
+import { activityFailure, activitySuccess, readActivityJson } from "@/backend/activity/responses";
+import { parseWebsiteSampleBatch } from "@/backend/activity/validation.mjs";
 
 export const dynamic = "force-dynamic";
 
