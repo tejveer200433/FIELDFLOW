@@ -11,5 +11,7 @@ button, input, select, textarea { font: inherit; }
 .btn-secondary { @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50; }
 .input { @apply w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100; }
 .label { @apply mb-1.5 block text-sm font-medium text-slate-700; }
+.web-access-rules > section:nth-of-type(2),
+.web-access-rules > div:last-child { display: none; }
 .icon-button { @apply relative grid h-12 w-12 shrink-0 place-items-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-blue-300 hover:text-blue-600; }
 .leaflet-container { font: inherit; background: #e7eef5; }

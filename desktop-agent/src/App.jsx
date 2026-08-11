@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { enable as enableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
 import { createFieldFlowAuth, verifyEmployeeAccess } from "./lib/auth";
 import { createActivityApi } from "./lib/api";
+import { isApplicationApproved } from "./lib/applicationAccess";
 import { captureCodingSample, captureSample } from "./lib/sampler";
 import { isHeartbeatRateLimit, shouldSendHeartbeat } from "./lib/heartbeat";
 import { decideStartupTracking, reconcileTrackingSession } from "./lib/lifecycle";
@@ -648,7 +649,7 @@ export default function App() {
     const refreshWebAccessPolicy = async () => {
       try {
         const current = await api.getWebAccessPolicy(deviceId);
-        if (!cancelled) await applyWebAccessPolicy(current);
+        if (!cancelled && current?.ruleId) await applyWebAccessPolicy(current);
       } catch {
         await agentLog("web_access_policy_refresh_delayed", "warn");
       }
@@ -664,11 +665,11 @@ export default function App() {
   useEffect(() => {
     if (!account || !deviceId || !webAccessPolicy?.enabled) return undefined;
     const enforceApplications = async () => {
-      const allowedApplications = new Set((webAccessPolicy.activeOverrides || [])
+      const allowedApplications = (webAccessPolicy.activeOverrides || [])
         .filter(item => item.resourceType === "application" && (!item.accessEndsAt || new Date(item.accessEndsAt).getTime() > Date.now()))
-        .map(item => String(item.resourceKey).toLowerCase()));
+        .map(item => item.resourceKey);
       const blockedApplications = (webAccessPolicy.blockedApplications || [])
-        .filter(application => !allowedApplications.has(String(application).toLowerCase()));
+        .filter(application => !isApplicationApproved(application, allowedApplications));
       if (!blockedApplications.length) return;
       try {
         const blocked = await invoke("enforce_restricted_applications", { blockedApplications });

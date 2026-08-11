@@ -6,7 +6,7 @@ import { createWebAccessRule, deleteWebAccessRule, getExtensionHealth, getWebAcc
 
 const defaults = { name: "Work-hours restrictions", scopeType: "organisation", scopeId: "", scopeIds: [], enforcementEnabled: true, priority: 100, blockedCategories: ["social_media", "entertainment", "messaging"], blockedDomains: [], allowedDomains: [], blockedApplications: ["whatsapp", "whatsapp.root", "telegram", "snapchat", "instagram"], scheduleTimezone: "Asia/Kolkata", scheduleDays: [1,2,3,4,5], scheduleStart: "09:00", scheduleEnd: "18:00", requireManagedExtension: true, enabled: true };
 
-export default function WebAccessAdministration({ allowRuleManagement = true }) {
+export default function WebAccessAdministration({ allowRuleManagement = true, view = "all" }) {
   const [data, setData] = useState({ rules: [], canManageGlobally: true, scopes: { employees: [], teams: [], roles: [], devices: [] }, categories: [] });
   const [requests, setRequests] = useState([]); const [health, setHealth] = useState([]); const [events, setEvents] = useState([]);
   const [form, setForm] = useState(defaults); const [busy, setBusy] = useState(""); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
@@ -31,6 +31,8 @@ export default function WebAccessAdministration({ allowRuleManagement = true }) 
   const multiTargetScope = ["employee", "role"].includes(form.scopeType);
   const targetMissing = form.scopeType !== "organisation" && (multiTargetScope ? !form.scopeIds.length : !form.scopeId);
   const pending = requests.filter(item => item.status === "Pending");
+  const showRules = view === "all" || view === "rules";
+  const showAlerts = view === "all" || view === "alerts";
   const eventSummary = useMemo(() => events.reduce((summary, item) => {
     summary.total += 1;
     if (item.event_type === "domain_blocked") summary.websites += 1;
@@ -47,9 +49,9 @@ export default function WebAccessAdministration({ allowRuleManagement = true }) 
     setBusy(item.id); try { await reviewWebAccessRequest({ id: item.id, decision, approvalScope, grantedMinutes: item.requestedMinutes, comment: decision === "Approved" ? "Approved for business use." : "Request rejected." }); await load(); } catch (failure) { setError(failure.message); } finally { setBusy(""); }
   }
 
-  return <div className="space-y-6">
+  return <div className={`space-y-6 web-access-${view}`}>
     {(notice || error) && <p className={`rounded-xl p-3 text-sm ${error ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}>{error || notice}</p>}
-    {allowRuleManagement && <section className="card overflow-hidden"><div className="border-b p-5"><h2 className="flex items-center gap-2 font-bold"><Shield className="h-5 w-5 text-blue-600" />Scoped web and application restrictions</h2><p className="mt-1 text-sm text-slate-500">Control restrictions by organisation, team, role, employee, or device. A higher priority rule wins.</p></div><form onSubmit={saveRule} className="grid gap-4 p-5 lg:grid-cols-3">
+    {allowRuleManagement && showRules && <section className="card overflow-hidden"><div className="border-b p-5"><h2 className="flex items-center gap-2 font-bold"><Shield className="h-5 w-5 text-blue-600" />App and website access</h2><p className="mt-1 text-sm text-slate-500">Create an organisation restriction or a focused exception for an employee, team, role, or device.</p></div><form onSubmit={saveRule} className="grid gap-4 p-5 lg:grid-cols-3">
       <label><span className="label">Policy name</span><input className="input" value={form.name} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} /></label>
       <label><span className="label">Who is restricted?</span><select className="input" value={form.scopeType} onChange={event => setForm(current => ({ ...current, scopeType: event.target.value, scopeId: "", scopeIds: [] }))}>{data.canManageGlobally && <option value="organisation">Entire organisation</option>}<option value="team">Team</option>{data.canManageGlobally && <option value="role">Role</option>}<option value="employee">Employee</option><option value="device">Device</option></select></label>
       {form.scopeType !== "organisation" && (multiTargetScope ? <fieldset className="rounded-xl border border-slate-200 p-3"><legend className="label px-1">Select {form.scopeType === "role" ? "roles" : "employees"}</legend><p className="mb-2 text-xs text-slate-500">{form.scopeIds.length} selected</p><div className="max-h-40 space-y-1 overflow-y-auto">{scopeOptions.map(item => <label key={item.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50"><input type="checkbox" checked={form.scopeIds.includes(item.id)} onChange={event => setForm(current => ({ ...current, scopeIds: event.target.checked ? [...current.scopeIds, item.id] : current.scopeIds.filter(id => id !== item.id) }))} />{item.name}</label>)}</div></fieldset> : <label><span className="label">Select scope</span><select required className="input" value={form.scopeId} onChange={event => setForm(current => ({ ...current, scopeId: event.target.value }))}><option value="">Select…</option>{scopeOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>)}

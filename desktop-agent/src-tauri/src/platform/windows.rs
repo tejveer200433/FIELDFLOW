@@ -2,9 +2,10 @@ use std::{ffi::OsString, os::windows::ffi::OsStringExt};
 
 use sha2::{Digest, Sha256};
 use windows::{
-    core::PCWSTR,
+    core::{PCWSTR, PWSTR},
     Win32::{
-        Foundation::{CloseHandle, ERROR_SUCCESS},
+        Foundation::{CloseHandle, ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS, WIN32_ERROR},
+        Storage::Packaging::Appx::{GetApplicationUserModelId, GetPackageFullName},
         System::{
             Diagnostics::ToolHelp::{
                 CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
@@ -16,7 +17,10 @@ use windows::{
             },
             StationsAndDesktops::{CloseDesktop, OpenInputDesktop, DESKTOP_SWITCHDESKTOP},
             SystemInformation::GetTickCount,
-            Threading::{GetCurrentProcessId, OpenProcess, TerminateProcess, PROCESS_TERMINATE},
+            Threading::{
+                GetCurrentProcessId, OpenProcess, TerminateProcess,
+                PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+            },
         },
         UI::{
             Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO},
@@ -101,6 +105,41 @@ fn process_name(process_id: u32) -> Result<Option<String>, String> {
     }
 }
 
+fn packaged_string(mut query: impl FnMut(*mut u32, PWSTR) -> WIN32_ERROR) -> Option<String> {
+    let mut length = 0u32;
+    if query(&mut length, PWSTR::null()) != ERROR_INSUFFICIENT_BUFFER || length == 0 {
+        return None;
+    }
+    let mut buffer = vec![0u16; length as usize];
+    if query(&mut length, PWSTR(buffer.as_mut_ptr())) != ERROR_SUCCESS {
+        return None;
+    }
+    let value = String::from_utf16_lossy(
+        &buffer[..buffer
+            .iter()
+            .position(|value| *value == 0)
+            .unwrap_or(buffer.len())],
+    );
+    (!value.trim().is_empty()).then_some(value)
+}
+
+fn packaged_process_identifiers(process_id: u32) -> Vec<String> {
+    unsafe {
+        let Ok(handle) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id) else {
+            return Vec::new();
+        };
+        let identifiers = [
+            packaged_string(|length, value| GetPackageFullName(handle, length, value)),
+            packaged_string(|length, value| GetApplicationUserModelId(handle, length, value)),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let _ = CloseHandle(handle);
+        identifiers
+    }
+}
+
 pub fn active_application() -> Result<Option<String>, String> {
     unsafe {
         let window = GetForegroundWindow();
@@ -133,7 +172,14 @@ pub fn terminate_foreground_if_restricted(
             return Ok(None);
         };
         let normalized = application.trim_end_matches(".exe").to_ascii_lowercase();
-        if !is_application_restricted(&normalized, blocked_applications) {
+        let packaged_identifiers = packaged_process_identifiers(process_id);
+        let title = window_title(window);
+        if !is_application_restricted_with_identity(
+            &normalized,
+            &packaged_identifiers,
+            title.as_deref(),
+            blocked_applications,
+        ) {
             return Ok(None);
         }
         let handle =
@@ -143,6 +189,50 @@ pub fn terminate_foreground_if_restricted(
         result.map_err(|error| error.to_string())?;
         Ok(Some(application))
     }
+}
+
+fn compact_identifier(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+fn configured_identity_match(candidate: &str, blocked_applications: &[String]) -> bool {
+    let candidate = compact_identifier(candidate);
+    blocked_applications.iter().any(|value| {
+        let configured = compact_identifier(value.trim().trim_end_matches(".exe"));
+        configured.len() >= 4 && candidate.contains(&configured)
+    })
+}
+
+fn is_application_restricted_with_identity(
+    application: &str,
+    packaged_identifiers: &[String],
+    window_title: Option<&str>,
+    blocked_applications: &[String],
+) -> bool {
+    if is_application_restricted(application, blocked_applications) {
+        return true;
+    }
+    if packaged_identifiers
+        .iter()
+        .any(|identity| configured_identity_match(identity, blocked_applications))
+    {
+        return true;
+    }
+
+    // Some Microsoft Store web apps are hosted by a protected browser executable and do not
+    // expose a useful package identity. Their app window has a short standalone title (for
+    // example "Instagram"). Match that exact local title only; it is never stored or uploaded.
+    window_title
+        .map(|title| {
+            blocked_applications.iter().any(|value| {
+                compact_identifier(title) == compact_identifier(value.trim_end_matches(".exe"))
+            })
+        })
+        .unwrap_or(false)
 }
 
 fn is_application_restricted(application: &str, blocked_applications: &[String]) -> bool {
@@ -372,8 +462,9 @@ pub fn device_identity() -> Result<DeviceIdentity, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        elapsed_ticks, ide_label_for_process, is_application_restricted, parse_eclipse_project,
-        parse_intellij_project, parse_vscode_like_project, sanitize_application_name,
+        configured_identity_match, elapsed_ticks, ide_label_for_process, is_application_restricted,
+        is_application_restricted_with_identity, parse_eclipse_project, parse_intellij_project,
+        parse_vscode_like_project, sanitize_application_name,
     };
 
     #[test]
@@ -473,5 +564,45 @@ mod tests {
         assert!(is_application_restricted("Telegram.exe", &blocked));
         assert!(!is_application_restricted("chrome", &blocked));
         assert!(!is_application_restricted("notepad", &blocked));
+    }
+
+    #[test]
+    fn microsoft_store_package_identity_matches_configured_application() {
+        let blocked = vec!["instagram".to_string(), "whatsapp".to_string()];
+        assert!(configured_identity_match(
+            "Facebook.InstagramBeta_42.0.19.0_x64__8xx8rvfyw5nnt",
+            &blocked
+        ));
+        assert!(configured_identity_match(
+            "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App",
+            &blocked
+        ));
+        assert!(!configured_identity_match(
+            "Microsoft.WindowsCalculator_8wekyb3d8bbwe",
+            &blocked
+        ));
+    }
+
+    #[test]
+    fn standalone_store_web_app_title_can_match_without_blocking_browser_itself() {
+        let blocked = vec!["instagram".to_string()];
+        assert!(is_application_restricted_with_identity(
+            "msedge",
+            &[],
+            Some("Instagram"),
+            &blocked
+        ));
+        assert!(!is_application_restricted_with_identity(
+            "msedge",
+            &[],
+            Some("Instagram - Search results"),
+            &blocked
+        ));
+        assert!(!is_application_restricted_with_identity(
+            "msedge",
+            &[],
+            Some("FieldFlow"),
+            &blocked
+        ));
     }
 }
