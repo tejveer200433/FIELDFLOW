@@ -8,6 +8,7 @@ import { signOutUser, useAuthGuard } from "@/frontend/lib/authClient";
 import { AccessProvider } from "@/frontend/contexts/AccessContext";
 import { formatTimeAgo, useNotifications } from "@/frontend/lib/notificationsClient";
 import { hasAnyPermission, PERMISSIONS } from "@/shared/permissions";
+import WorkspaceLoadingShell from "@/frontend/components/layout/WorkspaceLoadingShell";
 
 const managementNav = [
   ["", "Dashboard", Zap, [PERMISSIONS.dashboardView]],
@@ -39,14 +40,14 @@ export default function RoleShell({ role, children }) {
   const pathname = usePathname();
   const router = useRouter();
   const access = useAuthGuard(role);
-  const { items: notifications, unreadCount, markAllRead } = useNotifications();
+  const { items: notifications, unreadCount, markAllRead } = useNotifications({ enabled: Boolean(access) });
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [panel, setPanel] = useState("");
   const [query, setQuery] = useState("");
   const isManagerDashboard = role === "manager" && pathname === "/manager";
 
-  if (!access) return <div className="grid min-h-screen place-items-center bg-slate-950 text-white"><div className="text-center"><span className="mx-auto grid h-12 w-12 animate-pulse place-items-center rounded-full bg-blue-600"><Zap /></span><p className="mt-4 text-sm text-slate-300">Checking your session…</p></div></div>;
+  if (!access) return <WorkspaceLoadingShell />;
 
   const displayName = access.profile?.full_name || "FieldFlow user";
   const dynamicRoleName = access.role?.name || "Workspace member";

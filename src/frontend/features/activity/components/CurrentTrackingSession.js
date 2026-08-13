@@ -36,7 +36,7 @@ export default function CurrentTrackingSession({
 
   if (sessionInfo?.active) {
     const session = sessionInfo.session;
-    return <section className="card border-emerald-200 p-5 sm:p-6">
+    return <section className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div><p className="text-xs font-bold uppercase tracking-widest text-emerald-600">Tracking active</p><h2 className="mt-1 text-xl font-bold">{formatElapsed(session.startedAt, now)}</h2><p className="mt-2 text-sm text-slate-500">Started {formatDateTime(session.startedAt)}</p></div>
         <button type="button" disabled={busy} onClick={onStop} className="btn-secondary border-rose-200 text-rose-700"><Square className="h-4 w-4" />{busy ? "Stopping…" : "Stop tracking"}</button>
@@ -50,7 +50,7 @@ export default function CurrentTrackingSession({
     </section>;
   }
 
-  return <section className="card p-5 sm:p-6">
+  return <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
     <div><h2 className="font-bold">Current tracking session</h2><p className="mt-1 text-sm text-slate-500">Tracking starts only after you press the button below.</p></div>
     {!activeDevices.length
       ? <div className="mt-5"><ActivityEmptyState title="No active registered device" description="The desktop agent must register a device, and an authorised administrator must activate it, before tracking can start." /></div>
@@ -58,7 +58,7 @@ export default function CurrentTrackingSession({
         <label><span className="label">Active device</span><select className="input" value={deviceId} onChange={event => setDeviceId(event.target.value)}>{activeDevices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.deviceName} · {device.platform}</option>)}</select></label>
         <label><span className="label">Project (optional)</span><select className="input" disabled><option value="">None</option></select></label>
         <label><span className="label">Task (optional)</span><select className="input" disabled><option value="">None</option></select></label>
-        <div className="flex items-end"><button type="button" disabled={!canStart || busy} onClick={() => onStart({ deviceId, projectId: null, taskId: null })} className="btn-primary w-full"><Play className="h-4 w-4" />{busy ? "Starting…" : "Start tracking"}</button></div>
+        <div className="flex items-end"><button type="button" disabled={!canStart || busy} onClick={() => onStart({ deviceId, projectId: null, taskId: null })} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"><Play className="h-4 w-4" />{busy ? "Starting…" : "Start tracking"}</button></div>
       </div>}
     <p className="mt-4 text-xs text-slate-500">The browser cannot monitor system-wide activity. This button controls a session for an already registered desktop agent. Project and task choices are unavailable until an activity-scoped assignment endpoint is provided.</p>
   </section>;

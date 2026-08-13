@@ -6,6 +6,7 @@ import { useEmployeeTracking } from "@/frontend/features/activity/context/Employ
 import { durationSeconds, formatDuration } from "@/shared/time";
 import { apiJson } from "@/frontend/lib/apiClient";
 import EmployeeAttendanceRequests from "@/frontend/features/attendance/components/EmployeeAttendanceRequests";
+import EmployeePageHeader from "@/frontend/features/employee/components/EmployeePageHeader";
 
 function Status({ value }) {
   return <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${value === "Late" ? "border-red-600 bg-red-600 text-white" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{value}</span>;
@@ -149,20 +150,20 @@ function AttendanceToday() {
   }
 
   return <>
-    <section className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5">
+    <section className="mb-5 rounded-2xl border border-violet-100 bg-violet-50/70 p-5">
       <div className="flex items-start gap-3">
-        <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+        <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-violet-600" />
         <div>
-          <h2 className="font-bold text-blue-950">Location-restricted attendance</h2>
-          <p className="mt-1 text-sm text-blue-800">Check-in and check-out are allowed only within the configured office/site radius.</p>
+          <h2 className="font-extrabold text-slate-950">Location-restricted attendance</h2>
+          <p className="mt-1 text-sm text-slate-600">Check-in and check-out are allowed only within the configured office/site radius.</p>
           {locations.length > 0
-            ? <div className="mt-3 flex flex-wrap gap-2">{locations.map(location => <span key={location.id} className="rounded-full border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-800">{location.name} · {location.radiusM.toLocaleString()} m</span>)}</div>
+            ? <div className="mt-3 flex flex-wrap gap-2">{locations.map(location => <span key={location.id} className="rounded-full border border-violet-200 bg-white px-3 py-1.5 text-xs font-bold text-violet-700">{location.name} · {location.radiusM.toLocaleString()} m</span>)}</div>
             : <p className="mt-3 text-sm font-semibold text-amber-700">Attendance is not configured yet. Ask an administrator to add an office or site location.</p>}
         </div>
       </div>
     </section>
 
-    <section className="card mb-6 p-5">
+    <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className="grid h-11 w-11 place-items-center rounded-full bg-violet-50 text-violet-600"><CalendarRange className="h-5 w-5" /></span>
@@ -176,10 +177,10 @@ function AttendanceToday() {
       </div>
     </section>
 
-    <section className="card p-5 sm:p-6">
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-5">
         <div className="flex items-center gap-4">
-          <span className="grid h-14 w-14 place-items-center rounded-full bg-blue-50 text-blue-600"><Clock3 /></span>
+          <span className="grid h-14 w-14 place-items-center rounded-2xl bg-violet-50 text-violet-600"><Clock3 /></span>
           <div>
             <p className="text-xs uppercase tracking-widest text-slate-500">Current time</p>
             <strong className="text-3xl">{new Date(now).toLocaleTimeString()}</strong>
@@ -201,7 +202,7 @@ function AttendanceToday() {
       </div>}
       {open && <div className="mt-3 rounded-2xl bg-slate-50 p-4"><p className="text-xs uppercase tracking-widest text-slate-500">Verified geofence</p><strong>{open.checkInLocation?.geofenceName || "Recorded"}</strong>{open.checkInLocation?.distanceM != null && <span className="ml-2 text-xs text-slate-500">{Math.round(open.checkInLocation.distanceM)} m from location</span>}</div>}
 
-      <button disabled={busy} onClick={() => act(open ? "check-out" : "check-in")} className={`mt-5 w-full rounded-2xl px-5 py-4 font-bold text-white disabled:opacity-50 ${open ? "bg-rose-500" : "bg-blue-600"}`}>
+      <button disabled={busy} onClick={() => act(open ? "check-out" : "check-in")} className={`mt-5 w-full rounded-xl px-5 py-4 font-bold text-white transition disabled:opacity-50 ${open ? "bg-rose-500 hover:bg-rose-600" : "bg-violet-600 hover:bg-violet-700"}`}>
         {busy ? "Getting GPS location…" : open ? `Check out · ${formatDuration(openSeconds)}` : "Check in with GPS"}
       </button>
       {open && <button disabled={busy} onClick={breakAction} className={`mt-3 w-full rounded-2xl border px-5 py-3.5 font-bold disabled:opacity-50 ${activeBreak ? "border-amber-300 bg-amber-50 text-amber-700" : "border-slate-200 bg-white text-slate-700"}`}><Coffee className="mr-2 inline h-5 w-5" />{activeBreak ? `End break · started ${new Date(activeBreak.startedAt).toLocaleTimeString()}` : "Start break"}</button>}
@@ -210,7 +211,7 @@ function AttendanceToday() {
       {message && <p aria-live="polite" className="mt-3 rounded-xl bg-blue-50 p-3 text-sm text-blue-700">{message}</p>}
     </section>
 
-    <section className="card mt-6 p-6">
+    <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-widest text-slate-500">Live location</p>
@@ -249,13 +250,10 @@ function AttendanceToday() {
 export default function EmployeeAttendance() {
   const [tab, setTab] = useState("today");
   return <>
-    <div className="mb-7">
-      <h1 className="text-3xl font-extrabold sm:text-4xl">Attendance</h1>
-      <p className="mt-2 text-slate-500">Work time, breaks, leave, and corrections in one place.</p>
-    </div>
-    <div className="mb-6 flex gap-2 overflow-x-auto pb-1">
-      <button onClick={() => setTab("today")} className={tab === "today" ? "btn-primary shrink-0 rounded-full" : "btn-secondary shrink-0 rounded-full"}><Clock3 className="h-4 w-4" />Today & history</button>
-      <button onClick={() => setTab("requests")} className={tab === "requests" ? "btn-primary shrink-0 rounded-full" : "btn-secondary shrink-0 rounded-full"}><CalendarRange className="h-4 w-4" />Leave & corrections</button>
+    <EmployeePageHeader title="Attendance" description="Work time, breaks, leave, and corrections in one place." />
+    <div className="mb-5 flex w-fit max-w-full gap-1 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
+      <button onClick={() => setTab("today")} className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition ${tab === "today" ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"}`}><Clock3 className="h-4 w-4" />Today & history</button>
+      <button onClick={() => setTab("requests")} className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition ${tab === "requests" ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"}`}><CalendarRange className="h-4 w-4" />Leave & corrections</button>
     </div>
     {tab === "today" ? <AttendanceToday /> : <EmployeeAttendanceRequests />}
   </>;

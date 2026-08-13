@@ -13,3 +13,11 @@ test("web access policy refreshes cannot reset core sync timers", async () => {
   assert.match(source, /const applicationTimer = window\.setInterval\(enforceApplications, 2000\);/);
   assert.match(source, /\}, \[account, api, deviceId, webAccessPolicy\]\);/);
 });
+
+test("monitoring policy heartbeats cannot postpone the upload timer", async () => {
+  const source = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+
+  assert.match(source, /setPolicy\(current => isSameMonitoringPolicy\(current, currentPolicy\) \? current : currentPolicy\)/);
+  assert.match(source, /const syncTimer = window\.setInterval\([\s\S]*?performSync[\s\S]*?uploadIntervalSeconds/);
+  assert.match(source, /\[account, deviceId, performSync, uploadIntervalSeconds\]/);
+});

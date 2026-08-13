@@ -27,3 +27,20 @@ pub fn delete(key: &str) -> Result<(), String> {
         Err(error) => Err(error.to_string()),
     }
 }
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::{delete, read, write};
+
+    #[test]
+    fn windows_credential_manager_round_trip_is_persistent_and_removable() {
+        let key = format!("fieldflow-test-{}", uuid::Uuid::new_v4());
+        let value = "temporary-fieldflow-credential-test";
+        write(&key, value).expect("Windows Credential Manager rejected a test write");
+        let result = read(&key).expect("Windows Credential Manager rejected a test read");
+        let cleanup = delete(&key);
+        assert_eq!(result.as_deref(), Some(value));
+        cleanup.expect("Windows Credential Manager rejected test cleanup");
+        assert_eq!(read(&key).expect("test credential lookup failed"), None);
+    }
+}

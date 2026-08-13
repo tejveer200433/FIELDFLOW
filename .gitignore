@@ -29,3 +29,6 @@ desktop-agent/src-tauri/target/
 
 # Local Claude Code tool settings
 .claude/
+
+# Generated desktop-agent installers
+FieldFlow-Activity-Agent-*-Setup.exe

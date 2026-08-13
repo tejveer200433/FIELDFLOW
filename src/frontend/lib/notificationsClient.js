@@ -13,7 +13,7 @@ export function formatTimeAgo(value) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-export function useNotifications({ limit = 20 } = {}) {
+export function useNotifications({ limit = 20, enabled = true, initialDelay = 1200, interval = 30000 } = {}) {
   const [items, setItems] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -27,10 +27,19 @@ export function useNotifications({ limit = 20 } = {}) {
   }, [limit]);
 
   useEffect(() => {
-    load();
-    const timer = setInterval(load, 5000);
-    return () => clearInterval(timer);
-  }, [load]);
+    if (!enabled) return undefined;
+    let intervalTimer;
+    const initialTimer = window.setTimeout(() => {
+      load();
+      intervalTimer = window.setInterval(() => {
+        if (document.visibilityState === "visible") load();
+      }, interval);
+    }, initialDelay);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(intervalTimer);
+    };
+  }, [enabled, initialDelay, interval, load]);
 
   const markAllRead = useCallback(() => {
     setUnreadCount(0);

@@ -5,6 +5,7 @@ mod input;
 mod logging;
 mod models;
 mod platform;
+mod recovery;
 mod screenshot;
 mod secure_store;
 
@@ -55,6 +56,10 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if args.iter().any(|argument| argument == "--recovery") {
+                let _ = app.emit("agent-resume-requested", ());
+                return;
+            }
             if args.iter().any(|argument| argument == "--minimized") {
                 return;
             }
@@ -188,7 +193,8 @@ pub fn run() {
             commands::get_agent_state,
             commands::quit_agent,
             commands::show_agent,
-            commands::agent_log
+            commands::agent_log,
+            commands::ensure_recovery_task
         ])
         .run(tauri::generate_context!())
         .expect("FieldFlow Activity Agent failed to start");

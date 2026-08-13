@@ -28,13 +28,20 @@ export function useAuthGuard(portal) {
       const { data } = await supabase.auth.getSession();
       const user = data.session?.user;
       if (!user) { router.replace(`/login/${portal}`); return; }
-      const { data: profile, error } = await supabase.from("profiles").select("id,email,full_name,role,approval_status,active").eq("id", user.id).single();
+      let [{ data: profile, error }, { data: accessData, error: accessError }] = await Promise.all([
+        supabase.from("profiles").select("id,email,full_name,role,department,approval_status,active,avatar_path").eq("id", user.id).single(),
+        supabase.rpc("get_my_access_context")
+      ]);
+      if (error?.code === "42703" || error?.code === "PGRST204") {
+        const fallback = await supabase.from("profiles").select("id,email,full_name,role,department,approval_status,active").eq("id", user.id).single();
+        profile = fallback.data;
+        error = fallback.error;
+      }
       if (error || !profile || profile.approval_status !== "approved" || !profile.active) {
         await supabase.auth.signOut();
         router.replace(`/login/${portal}?error=access`);
         return;
       }
-      const { data: accessData, error: accessError } = await supabase.rpc("get_my_access_context");
       if (accessError || !accessData) {
         router.replace(`/login/${portal}?error=permissions`);
         return;
@@ -45,8 +52,15 @@ export function useAuthGuard(portal) {
         router.replace(`/${workspace}`);
         return;
       }
+      profile.avatarUrl = null;
       saveIdentity({ role: profile.role, email: profile.email, name: profile.full_name, id: profile.id, access: resolvedAccess });
       if (active) setAccess({ ...resolvedAccess, profile });
+      if (profile.avatar_path) {
+        const { data: avatar } = await supabase.storage.from("profile-images").createSignedUrl(profile.avatar_path, 60 * 60);
+        if (active && avatar?.signedUrl) {
+          setAccess(current => current ? { ...current, profile: { ...current.profile, avatarUrl: avatar.signedUrl } } : current);
+        }
+      }
     }
     verify();
     const listener = supabase?.auth.onAuthStateChange((_event, session) => {

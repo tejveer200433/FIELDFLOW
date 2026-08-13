@@ -17,7 +17,12 @@ export async function requireSession(request, roles = []) {
   });
   const { data: auth, error: authError } = await client.auth.getUser();
   if (authError || !auth.user) throw new ApiError("Invalid or expired session.", 401);
-  const { data: profile, error: profileError } = await client.from("profiles").select("id,full_name,email,role,requested_role,approval_status,department,active").eq("id", auth.user.id).single();
+  let { data: profile, error: profileError } = await client.from("profiles").select("id,full_name,email,role,requested_role,approval_status,department,active,avatar_path").eq("id", auth.user.id).single();
+  if (profileError?.code === "42703" || profileError?.code === "PGRST204") {
+    const fallback = await client.from("profiles").select("id,full_name,email,role,requested_role,approval_status,department,active").eq("id", auth.user.id).single();
+    profile = fallback.data;
+    profileError = fallback.error;
+  }
   if (profileError || !profile) throw new ApiError("Your FieldFlow profile is not available.", 403);
   if (!profile.active || profile.approval_status !== "approved") throw new ApiError("This account is waiting for administrator approval.", 403);
   if (roles.length && !roles.includes(profile.role)) throw new ApiError("You do not have permission for this action.", 403);
@@ -121,6 +126,7 @@ export function mapProfile(profile) {
     department: profile.department,
     approvalStatus: profile.approval_status,
     active: profile.active,
+    avatarPath: profile.avatar_path || null,
     isOwner: Boolean(profile.access?.isOwner),
     dynamicRole: profile.access?.role || null,
     permissions: profile.access?.permissions || []

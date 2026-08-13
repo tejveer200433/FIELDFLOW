@@ -77,7 +77,7 @@ test("the notifications route relies on RLS for recipient scoping and validates 
 
 test("RoleShell renders a real unread badge and notification list instead of the static placeholder", () => {
   const source = read("src/frontend/components/layout/RoleShell.js");
-  assert.match(source, /useNotifications\(\)/);
+  assert.match(source, /useNotifications\(\{ enabled: Boolean\(access\) \}\)/);
   assert.match(source, /\{unreadCount > 0 && <span[\s\S]{0,120}bg-rose-500/);
   assert.match(source, /\{unreadCount > 9 \? "9\+" : unreadCount\}/);
   assert.match(source, /notifications\.map\(item =>/);

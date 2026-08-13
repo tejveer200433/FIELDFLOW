@@ -40,6 +40,7 @@ export default function ManagerDashboard({ access }) {
   const [snapshot,setSnapshot]=useState({tasks:[],attendance:[],employees:[],sos:[]});
   const [serviceState,setServiceState]=useState({tasks:"loading",attendance:"loading",employees:"loading",sos:"loading"});
   const [loadVersion,setLoadVersion]=useState(0);
+  const [mapReady,setMapReady]=useState(false);
   useEffect(() => {
     let active = true;
     const allowed = async (service, permissions, endpoint) => {
@@ -64,6 +65,15 @@ export default function ManagerDashboard({ access }) {
     });
     return () => { active = false; };
   }, [access, loadVersion]);
+  useEffect(() => {
+    const servicesReady = Object.values(serviceState).every(status => status !== "loading");
+    if (servicesReady) {
+      setMapReady(true);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setMapReady(true), 2000);
+    return () => window.clearTimeout(timer);
+  }, [serviceState]);
   const managerTasks=[...snapshot.sos.map(alert=>({id:alert.id,title:`SOS · ${alert.employee}`,employee:alert.employee,client:alert.message,address:`${alert.latitude}, ${alert.longitude}`,priority:"Urgent",status:"Blocked",updatedAt:alert.createdAt})),...snapshot.tasks];
   const onDuty=new Set(snapshot.attendance.filter(item=>!item.checkOut).map(item=>item.employeeId)).size;
   const hours=serviceState.attendance==="ready"?Array.from(snapshot.attendance.reduce((groups,item)=>{if(item.date===localDayKey()){const current=groups.get(item.employee)||0;groups.set(item.employee,current+(item.durationSeconds||0)/3600);}return groups;},new Map()),([name,value])=>({name:name.split(" ")[0],value:Number(value.toFixed(2))})):[];
@@ -107,7 +117,7 @@ export default function ManagerDashboard({ access }) {
     <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(280px,.85fr)]">
       <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_5px_18px_rgba(15,23,42,0.05)]">
         <div className="flex items-center justify-between px-4 py-3"><h2 className="text-sm font-bold text-slate-900">Live Team Tracking</h2><button onClick={()=>router.push("/manager/map")} className="text-xs font-semibold text-blue-600">View map <ArrowRight className="ml-1 inline h-3 w-3" /></button></div>
-        <div className="h-[360px] overflow-hidden [&>div]:!block [&>div>div]:!h-[360px] [&>div>div]:!min-h-0 [&_.leaflet-container]:!h-[360px] [&_aside]:!hidden"><LiveTeamMap /></div>
+        <div className="h-[360px] overflow-hidden [&>div]:!block [&>div>div]:!h-[360px] [&>div>div]:!min-h-0 [&_.leaflet-container]:!h-[360px] [&_aside]:!hidden">{mapReady ? <LiveTeamMap /> : <div className="grid h-full place-items-center bg-slate-50 text-xs font-semibold text-slate-400"><span className="animate-pulse">Preparing live map…</span></div>}</div>
       </section>
       <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_5px_18px_rgba(15,23,42,0.05)]">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3"><h2 className="text-sm font-bold text-slate-900">Team Members</h2><button onClick={()=>router.push("/manager/employees")} className="text-xs font-semibold text-blue-600">View all</button></div>

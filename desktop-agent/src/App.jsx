@@ -7,7 +7,7 @@ import { createActivityApi } from "./lib/api";
 import { isApplicationApproved } from "./lib/applicationAccess";
 import { captureCodingSample, captureSample } from "./lib/sampler";
 import { isHeartbeatRateLimit, shouldSendHeartbeat } from "./lib/heartbeat";
-import { decideStartupTracking, reconcileTrackingSession } from "./lib/lifecycle";
+import { decideStartupTracking, isSameMonitoringPolicy, reconcileTrackingSession } from "./lib/lifecycle";
 import { policyAcknowledgementText, sha256Hex } from "./lib/policy";
 import { deriveAgentStatus, formatDuration } from "./lib/status";
 import { syncAllPending } from "./lib/sync";
@@ -34,13 +34,15 @@ function Login({ supabase, onSignedIn }) {
     event.preventDefault();
     setBusy(true);
     setError("");
+    let authenticated = false;
     try {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) throw signInError;
+      authenticated = true;
       await onSignedIn();
       setPassword("");
     } catch (submitError) {
-      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+      if (!authenticated) await supabase.auth.signOut({ scope: "local" }).catch(() => {});
       setPassword("");
       setError(submitError.message || "Sign in failed.");
     } finally {
@@ -143,6 +145,8 @@ export default function App() {
   const updating = useRef(false);
   const heartbeatInFlight = useRef(false);
   const lastHeartbeatAttemptAt = useRef(0);
+  const trackingDesired = useRef(true);
+  const recoveryInFlight = useRef(false);
 
   const clearTimers = useCallback(() => {
     timers.current.forEach(window.clearInterval);
@@ -309,6 +313,8 @@ export default function App() {
       }
       const authoritativeDevice = registeredDevice;
       setDevice(authoritativeDevice);
+      const desiredState = await invoke("get_agent_state", { key: "tracking_desired" });
+      trackingDesired.current = desiredState !== "false";
 
       const saveLocalSession = async activeSession => {
         await invoke("set_agent_state", { key: "tracking_active", value: "true" });
@@ -331,7 +337,8 @@ export default function App() {
         policy: currentPolicy,
         deviceStatus: authoritativeDevice.status,
         currentSession,
-        deviceId: registeredDevice.deviceId
+        deviceId: registeredDevice.deviceId,
+        trackingDesired: trackingDesired.current
       });
       if (startupAction === "resume") {
         await saveLocalSession(currentSession.session);
@@ -385,10 +392,21 @@ export default function App() {
 
   useEffect(() => {
     if (import.meta.env.DEV) return;
-    isAutostartEnabled()
-      .then(enabled => enabled ? undefined : enableAutostart())
-      .then(() => agentLog("autostart_enabled"))
-      .catch(() => agentLog("autostart_enable_failed", "warn"));
+    const repairStartup = async () => {
+      try {
+        if (!await isAutostartEnabled()) await enableAutostart();
+        await agentLog("autostart_enabled");
+      } catch {
+        await agentLog("autostart_enable_failed", "warn");
+      }
+      try {
+        await invoke("ensure_recovery_task");
+        await agentLog("recovery_task_enabled");
+      } catch {
+        await agentLog("recovery_task_enable_failed", "warn");
+      }
+    };
+    repairStartup();
   }, []);
 
   useEffect(() => {
@@ -461,7 +479,7 @@ export default function App() {
   });
 
   const performSync = useCallback(async () => {
-    if (!online || !deviceId || syncing.current) return;
+    if ((!online && !navigator.onLine) || !deviceId || syncing.current) return;
     syncing.current = true;
     try {
       await syncAllPending(api, deviceId);
@@ -507,21 +525,26 @@ export default function App() {
     };
   }, [checkForUpdates]);
 
-  const reconcileWithServer = useCallback(async () => {
-    if (!account || !deviceId || !online || reconciling.current) return;
+  const reconcileWithServer = useCallback(async (policyOverride = null) => {
+    if (!account || !deviceId || (!online && !navigator.onLine) || reconciling.current) return;
     reconciling.current = true;
     try {
       const currentSession = await api.getCurrentSession();
+      const effectivePolicy = policyOverride || policy;
       const resolution = reconcileTrackingSession({
         localSession: trackingSessionId.current
           ? { sessionId: trackingSessionId.current }
           : null,
         currentSession,
         deviceId,
-        policy,
-        deviceStatus: device?.status
+        policy: effectivePolicy,
+        deviceStatus: device?.status,
+        trackingDesired: trackingDesired.current
       });
       if (resolution.action === "stop") {
+        if (currentSession?.active && currentSession.session?.deviceId === deviceId) {
+          await api.stopSession({ sessionId: currentSession.session.sessionId, source: "agent" }).catch(() => null);
+        }
         trackingSessionId.current = null;
         setSession(null);
         sampling.current = false;
@@ -566,6 +589,44 @@ export default function App() {
     }
   }, [account, api, device, deviceId, online, policy]);
 
+  const recoverAfterSystemActivity = useCallback(async () => {
+    if (recoveryInFlight.current) return;
+    recoveryInFlight.current = true;
+    await agentLog("system_recovery_started");
+    try {
+      const connected = navigator.onLine;
+      setOnline(connected);
+      if (!connected) throw new Error("The network is not ready after system resume.");
+      const { data, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !data.session) throw refreshError || new Error("The saved session is unavailable.");
+      if (!account || !deviceId) {
+        await initialize();
+      } else {
+        const currentPolicy = await api.getPolicy();
+        setPolicy(current => isSameMonitoringPolicy(current, currentPolicy) ? current : currentPolicy);
+        await reconcileWithServer(currentPolicy);
+        await sendHeartbeat({
+          targetDeviceId: deviceId,
+          targetSessionId: trackingSessionId.current,
+          intervalSeconds: policy?.heartbeatIntervalSeconds || 60,
+          force: true
+        });
+        await performSync();
+      }
+      await agentLog("system_recovery_succeeded");
+    } catch (recoveryError) {
+      setError(`Recovery delayed: ${recoveryError?.message || "FieldFlow is temporarily unavailable."}`);
+      await agentLog("system_recovery_delayed", "warn");
+    } finally {
+      recoveryInFlight.current = false;
+    }
+  }, [account, api, deviceId, initialize, performSync, policy, reconcileWithServer, sendHeartbeat, supabase]);
+
+  useEffect(() => {
+    const unlisten = listen("agent-resume-requested", recoverAfterSystemActivity);
+    return () => { unlisten.then(dispose => dispose()); };
+  }, [recoverAfterSystemActivity]);
+
   useEffect(() => {
     if (online && !previousOnline.current) {
       performSync();
@@ -596,12 +657,15 @@ export default function App() {
         }) === "Idle" ? "idle" : online ? "online" : "offline"
       })
         .catch(heartbeatError => setError(`Heartbeat delayed: ${heartbeatError.message}`));
-      await reconcileWithServer();
+      let currentPolicy = policy;
+      try {
+        currentPolicy = await api.getPolicy();
+        setPolicy(current => isSameMonitoringPolicy(current, currentPolicy) ? current : currentPolicy);
+      } catch {
+        // Keep the last verified policy during a temporary service interruption.
+      }
+      await reconcileWithServer(currentPolicy);
     }, Math.max(15, policy.heartbeatIntervalSeconds || 60) * 1000));
-    timers.current.push(window.setInterval(
-      performSync,
-      Math.max(30, policy.uploadIntervalSeconds || 300) * 1000
-    ));
     if (session && policy.trackingEnabled) {
       timers.current.push(window.setInterval(async () => {
         if (sampling.current) return;
@@ -641,7 +705,18 @@ export default function App() {
       }, Math.max(180, policy.screenshotIntervalSeconds || 240) * 1000));
     }
     return clearTimers;
-  }, [account, api, clearTimers, deviceId, online, performSync, policy, reconcileWithServer, refreshQueue, screenshotCaptureEnabled, sendHeartbeat, session]);
+  }, [account, api, clearTimers, deviceId, online, policy, reconcileWithServer, refreshQueue, screenshotCaptureEnabled, sendHeartbeat, session]);
+
+  const uploadIntervalSeconds = policy?.uploadIntervalSeconds;
+
+  useEffect(() => {
+    if (!account || !deviceId) return undefined;
+    const syncTimer = window.setInterval(
+      performSync,
+      Math.max(30, uploadIntervalSeconds || 300) * 1000
+    );
+    return () => window.clearInterval(syncTimer);
+  }, [account, deviceId, performSync, uploadIntervalSeconds]);
 
   useEffect(() => {
     if (!account || !api || !deviceId || !online) return undefined;
@@ -695,10 +770,18 @@ export default function App() {
     await initialize();
   }
 
+  async function signedIn() {
+    trackingDesired.current = true;
+    await invoke("set_agent_state", { key: "tracking_desired", value: "true" });
+    return initialize();
+  }
+
   async function startTracking() {
     if (!device || !policy?.trackingEnabled) return;
     setError("");
     try {
+      trackingDesired.current = true;
+      await invoke("set_agent_state", { key: "tracking_desired", value: "true" });
       const started = await api.startSession({ deviceId: device.deviceId, projectId: null, taskId: null, source: "agent" });
       await invoke("set_agent_state", { key: "tracking_active", value: "true" });
       await invoke("set_agent_state", { key: "tracking_session_id", value: started.sessionId });
@@ -725,6 +808,8 @@ export default function App() {
     if (!session) return;
     setError("");
     try {
+      trackingDesired.current = false;
+      await invoke("set_agent_state", { key: "tracking_desired", value: "false" });
       if (!sampling.current) {
         sampling.current = true;
         try {
@@ -769,6 +854,8 @@ export default function App() {
       return;
     }
     clearTimers();
+    trackingDesired.current = false;
+    await invoke("set_agent_state", { key: "tracking_desired", value: "false" });
     await supabase.auth.signOut({ scope: "local" });
     await agentLog("logout_succeeded");
     setAccount(null);
@@ -781,7 +868,7 @@ export default function App() {
     return <main className="auth-shell"><section className="card"><h1>Configuration required</h1><p>Add these values to <code>.env.local</code>:</p><pre>{config.missing.join("\n")}</pre></section></main>;
   }
   if (loading) return <main className="auth-shell"><p>Starting FieldFlow Activity Agent…</p></main>;
-  if (!account) return <Login supabase={supabase} onSignedIn={initialize} />;
+  if (!account) return <Login supabase={supabase} onSignedIn={signedIn} />;
   if (policy?.requireAcknowledgement && !policy.acknowledgementStatus?.acknowledged) {
     return <PolicyConsent policy={policy} onAccept={acknowledge} onSignOut={signOut} />;
   }

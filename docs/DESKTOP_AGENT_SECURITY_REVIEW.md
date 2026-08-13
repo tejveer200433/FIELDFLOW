@@ -44,7 +44,7 @@ Review date: 2026-07-29.
 ## Remaining limitations
 
 - Secure credential behavior was compiled and code-reviewed but still requires a real login/logout inspection in Windows Credential Manager.
-- Sleep, hibernate, session switch, and shutdown require hardware end-to-end testing.
+- Sign-in, sleep, hibernate, resume, unlock, and crash recovery are implemented but require hardware end-to-end testing on each managed Windows image.
 - SQLite corruption causes native startup failure; there is no read-only export/recovery UI.
 - A locally privileged user can inspect or alter their own process and application files; code signing and endpoint monitoring are not configured.
 - The installer is unsigned.

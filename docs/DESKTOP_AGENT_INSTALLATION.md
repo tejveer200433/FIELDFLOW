@@ -29,7 +29,7 @@ Create `desktop-agent/.env.local` from `.env.example`:
 VITE_FIELDFLOW_API_URL=http://localhost:3000
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-public-anon-key
-VITE_AGENT_VERSION=0.1.0
+VITE_AGENT_VERSION=0.4.8
 VITE_DEBUG_LOGGING=false
 ```
 
@@ -128,14 +128,15 @@ Stop tracking and sync before uninstall. The binary uninstaller does not prove t
 2. Sync or formally dispose of pending samples.
 3. Sign out to clear credentials.
 4. Uninstall the application.
-5. Verify application data/log directories and credential entries according to retention policy.
-6. Revoke the device in FIELD-FLOW.
+5. Remove the per-user recovery task with `schtasks /Delete /TN "FieldFlow Activity Agent Recovery" /F`.
+6. Verify application data/log directories and credential entries according to retention policy.
+7. Revoke the device in FIELD-FLOW.
 
 ## Known Windows limitations
 
 - No low-level input hooks; keyboard/mouse counts remain zero.
 - No automated SQLite corruption repair.
-- Sleep/resume behavior requires hardware acceptance testing.
-- No automatic startup configuration.
+- Sign-in, sleep/resume, hibernation, unlock, and failure recovery are configured through a per-user Windows scheduled task, but still require acceptance testing on each managed Windows image.
+- Recovery-task registration can be blocked by organisation policy; the agent records this and falls back to normal sign-in autostart.
 - No battery collection in the current agent.
 - Installer signing is not configured.

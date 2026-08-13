@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { DEFAULT_AGENT_VERSION, readConfiguration } from "../src/config.js";
 
 test("default agent version matches the packaged corrective release", () => {
-  assert.equal(DEFAULT_AGENT_VERSION, "0.4.5");
+  assert.equal(DEFAULT_AGENT_VERSION, "0.4.8");
 });
 
 test("configuration reports missing values without exposing secrets", () => {

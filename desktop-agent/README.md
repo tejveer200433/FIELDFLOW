@@ -131,7 +131,9 @@ This version installs Windows low-level keyboard and mouse notification hooks, b
 
 ## Windows startup and recovery
 
-Packaged production builds register the agent to start automatically at Windows sign-in. Auto-start launches it minimized with a visible system-tray icon. After the employee signs in and accepts the monitoring policy once, the securely stored session is reused. If both the server and local state identify the same active tracking session, collection resumes automatically. Pending samples are synchronized at startup, after reconnecting, on manual sync, and before and after stopping.
+Packaged production builds register a per-user Windows Task Scheduler recovery task. It launches the agent minimized at Windows sign-in, workstation unlock, and system resume, and Windows retries it after an unexpected process failure. Tauri's normal autostart entry is retained only as a fallback when Windows blocks recovery-task registration. The existing single-instance guard prevents duplicate tracking processes.
+
+After the employee signs in and accepts the monitoring policy once, the session remains encrypted in Windows Credential Manager. A normal restart, sleep, hibernation, extended shutdown, temporary network outage, or short-lived access-token expiry does not clear it. Recovery reloads authentication, the monitoring policy, the registered device, and the authoritative server session before immediately sending a heartbeat and synchronizing queued records. If an abandoned session has timed out, the agent creates a replacement session automatically. Intentional Stop/sign-out, an administrator-disabled policy, revoked device/account access, or a genuinely active session on another device still prevents automatic collection.
 
 The agent also uses the official Windows `GetLastInputInfo` API to calculate time since the last user input. Aggregate counters reset when tracking starts, when a sample reads them, and when tracking stops.
 

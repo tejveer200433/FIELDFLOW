@@ -237,6 +237,11 @@ pub fn agent_log(
 }
 
 #[tauri::command]
+pub fn ensure_recovery_task(app: AppHandle) -> Result<(), String> {
+    crate::recovery::ensure(&app)
+}
+
+#[tauri::command]
 pub fn capture_screenshot(
     app: AppHandle,
     database: State<'_, Database>,

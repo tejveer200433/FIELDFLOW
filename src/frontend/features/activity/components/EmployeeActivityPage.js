@@ -20,6 +20,7 @@ import MonitoringPolicyCard from "@/frontend/features/activity/components/Monito
 import ScreenshotActivitySummary from "@/frontend/features/activity/components/ScreenshotActivitySummary";
 import WebsiteUsageSummary from "@/frontend/features/activity/components/WebsiteUsageSummary";
 import WebAccessRequestCenter from "@/frontend/features/activity/components/WebAccessRequestCenter";
+import EmployeePageHeader from "@/frontend/features/employee/components/EmployeePageHeader";
 import { hasPermission } from "@/shared/permissions";
 import {
   acknowledgePolicy,
@@ -171,23 +172,24 @@ export default function EmployeeActivityPage() {
   }
   if (loading) return <ActivityLoadingState label="Loading your activity…" />;
 
-  return <div className="space-y-6">
-    <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600">Employee workspace</p><h1 className="mt-1 text-3xl font-extrabold text-slate-950">My Activity</h1><p className="mt-2 max-w-2xl text-sm text-slate-500">View your work tracking sessions, activity summaries, devices, and monitoring policy.</p></div>
-      <div className="flex items-center gap-3"><span className="text-xs text-slate-500">Last refreshed {lastRefreshed ? formatDateTime(lastRefreshed) : "never"}</span><button type="button" onClick={() => refresh()} className="btn-secondary"><RefreshCw className="h-4 w-4" />Refresh</button></div>
-    </header>
+  return <div className="space-y-5">
+    <EmployeePageHeader
+      title="My Activity"
+      description="View work tracking sessions, activity summaries, registered devices, and monitoring policy."
+      action={<div className="flex items-center gap-3"><span className="hidden text-xs text-slate-500 sm:inline">Last refreshed {lastRefreshed ? formatDateTime(lastRefreshed) : "never"}</span><button type="button" onClick={() => refresh()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:border-violet-200 hover:text-violet-700"><RefreshCw className="h-4 w-4" />Refresh</button></div>}
+    />
     {notice && <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">{notice}</div>}
     {error && <ActivityErrorState error={error} onRetry={() => refresh()} />}
     <ActivityStatusCard status={monitoringStatus} description={statusDescriptions[monitoringStatus.key]} />
     <CurrentTrackingSession sessionInfo={sessionInfo} devices={devices} policy={policy} busy={busy === "start" || busy === "stop"} onStart={start} onStop={stop} />
     <ActivitySummaryCards summary={todaySummary} />
     <InputActivitySummary activity={activity?.todayInputActivity} />
-    <div className="grid gap-6 xl:grid-cols-2">
+    <div className="grid gap-5 xl:grid-cols-2">
       <MonitoringPolicyCard policy={policy} />
       <MonitoringAcknowledgement policy={policy} busy={busy === "acknowledge"} onAcknowledge={acknowledge} />
     </div>
     <ActivityDeviceList devices={devices} heartbeat={heartbeat} heartbeatIntervalSeconds={policy?.heartbeatIntervalSeconds} />
-    <div className="grid gap-6 xl:grid-cols-2">
+    <div className="grid gap-5 xl:grid-cols-2">
       <ActivityTimeline sessions={activity?.timeline || []} rangeDays={rangeDays} onRangeChange={setRangeDays} />
       <ApplicationUsageSummary enabled={Boolean(policy?.collectApplicationNames)} usage={activity?.applicationUsage || []} sampleIntervalSeconds={policy?.sampleIntervalSeconds} trackedSeconds={rangeTrackedSeconds} rangeDays={rangeDays} onRangeChange={setRangeDays} />
     </div>
@@ -196,8 +198,8 @@ export default function EmployeeActivityPage() {
     <ScreenshotActivitySummary enabled={Boolean(policy?.collectScreenshots)} screenshots={activity?.screenshots || []} />
     {policy?.websiteBlockingEnabled && <Suspense fallback={null}><BlockedSiteRequestForm /></Suspense>}
     <WebAccessRequestCenter devices={devices} />
-    <section className="card p-5 text-sm text-slate-600">
-      <h2 className="font-bold text-slate-900">Heartbeat and sync status</h2>
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm">
+      <h2 className="font-extrabold text-slate-950">Heartbeat and sync status</h2>
       {heartbeat
         ? <dl className="mt-3 grid gap-3 sm:grid-cols-3"><div><dt className="text-xs uppercase text-slate-500">Last heartbeat</dt><dd className="mt-1 font-semibold">{formatDateTime(heartbeat.recordedAt)}</dd></div><div><dt className="text-xs uppercase text-slate-500">Agent version</dt><dd className="mt-1 font-semibold">{heartbeat.agentVersion || "Not reported"}</dd></div><div><dt className="text-xs uppercase text-slate-500">Reported state</dt><dd className="mt-1 font-semibold capitalize">{heartbeat.onlineStatus || "Unknown"}</dd></div></dl>
         : <p className="mt-2 text-slate-500">No heartbeat has been received. Start the desktop agent to establish device status.</p>}
