@@ -28,7 +28,7 @@ export async function GET(request) {
       ACTIVITY_PERMISSIONS.viewTeam,
       ACTIVITY_PERMISSIONS.viewAll
     ]);
-    enforceActivityRateLimit(request, "team-read", session.profile.id, { limit: 120, windowMs: 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "team-read", { limit: 120, windowMs: 60 * 1000 });
     const filters = parseTeamFilters(new URL(request.url).searchParams);
     const scope = await resolveActivityScope(session, { allowSelf: false });
     if (filters.employeeId) assertActivityEmployee(scope, filters.employeeId);

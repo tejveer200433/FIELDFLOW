@@ -20,7 +20,7 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const session = await requireActivitySession(request, [ACTIVITY_PERMISSIONS.viewSelf]);
-    enforceActivityRateLimit(request, "web-access-event-create", session.profile.id, { limit: 120, windowMs: 60000 });
+    await enforceActivityRateLimit(session.client, "web-access-event-create", { limit: 120, windowMs: 60000 });
     const body = parseWebAccessEvent(await readActivityJson(request));
     const { data, error } = await session.client.rpc("web_access_record_event", { p_device_id: body.deviceId, p_event_type: body.eventType, p_resource_type: body.resourceType, p_resource_key: body.resourceKey });
     if (error) throw error;

@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request) {
   try {
     const session = await requireActivitySession(request, [ACTIVITY_PERMISSIONS.viewSelf]);
-    enforceActivityRateLimit(request, "heartbeat", session.profile.id, { limit: 12, windowMs: 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "heartbeat", { limit: 12, windowMs: 60 * 1000 });
     const body = parseHeartbeat(await readActivityJson(request));
     const device = await requireOwnedDevice(session.client, session.profile.id, body.deviceId);
     const { data, error } = await session.client.rpc("activity_record_heartbeat", {

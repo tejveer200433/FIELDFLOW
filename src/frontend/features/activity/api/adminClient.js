@@ -61,6 +61,8 @@ export class UnsupportedActivityReadError extends Error {
   }
 }
 
-export function getMonitoringAuditLog() {
-  return Promise.reject(new UnsupportedActivityReadError("Phase 2 does not provide an activity audit-log read endpoint."));
+export function getMonitoringAuditLog({ cursor = "", limit = 25 } = {}) {
+  const query = new URLSearchParams({ limit: String(Math.max(1, Math.min(100, Number(limit) || 25))) });
+  if (cursor) query.set("cursor", cursor);
+  return adminActivityRequest(`/audit?${query}`);
 }

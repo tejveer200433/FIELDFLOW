@@ -14,7 +14,7 @@ export async function GET(request, { params }) {
       ACTIVITY_PERMISSIONS.viewTeam,
       ACTIVITY_PERMISSIONS.viewAll
     ]);
-    enforceActivityRateLimit(request, "employee-detail", session.profile.id, { limit: 120, windowMs: 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "employee-detail", { limit: 120, windowMs: 60 * 1000 });
     const { employeeId } = await params;
     if (!isUuid(employeeId)) throw new ActivityError("INVALID_EMPLOYEE_ID", "A valid employee ID is required.", 400);
     const scope = await resolveActivityScope(session);

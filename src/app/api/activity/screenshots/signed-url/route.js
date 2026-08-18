@@ -12,7 +12,7 @@ export async function GET(request) {
       ACTIVITY_PERMISSIONS.viewTeam,
       ACTIVITY_PERMISSIONS.viewAll
     ]);
-    enforceActivityRateLimit(request, "screenshot-signed-url", session.profile.id, { limit: 60, windowMs: 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "screenshot-signed-url", { limit: 60, windowMs: 60 * 1000 });
     const { path } = parseScreenshotSignedUrlQuery(new URL(request.url).searchParams);
     const { data: screenshot, error: lookupError } = await session.client
       .from("activity_screenshots").select("id").eq("storage_path", path).maybeSingle();

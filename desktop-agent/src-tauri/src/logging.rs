@@ -40,6 +40,13 @@ const ALLOWED_EVENTS: &[&str] = &[
     "update_check_current",
     "update_check_delayed",
     "update_restart_recovered",
+    "auth_session_restored",
+    "auth_session_missing",
+    "auth_refresh_started",
+    "auth_refresh_succeeded",
+    "auth_refresh_network_delayed",
+    "auth_refresh_rejected_retained",
+    "auth_session_revoked",
 ];
 
 pub fn write(app: &AppHandle, event: &str, level: &str, debug_enabled: bool) -> Result<(), String> {

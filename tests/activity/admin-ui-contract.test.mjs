@@ -41,11 +41,11 @@ test("admin clients reuse authenticatedFetch and only call activity endpoints", 
   }
 });
 
-test("unsupported administrative reads are explicit and never bypass the API", () => {
-  assert.match(adminClient, /Phase 2 does not provide an activity audit-log read endpoint/);
+test("administrative audit reads use the authorised activity API while unsupported reads stay explicit", () => {
+  assert.match(adminClient, /adminActivityRequest\(`\/audit\?\$\{query\}`\)/);
   assert.match(policyClient, /Phase 2 exposes only the active policy/);
   assert.match(policyClient, /does not expose an acknowledgement-summary endpoint/);
-  assert.match(read("src/frontend/features/activity/components/MonitoringAuditLog.js"), /does not expose a safe audit read endpoint/);
+  assert.match(read("src/frontend/features/activity/components/MonitoringAuditLog.js"), /getMonitoringAuditLog/);
 });
 
 test("workforce filters reset pagination and polling cleans up", () => {
@@ -70,7 +70,8 @@ test("sensitive fields and raw samples never render in admin components", () => 
   const sources = [
     workforce, settings, form, devices,
     read("src/frontend/features/activity/components/WorkforceActivityTable.js"),
-    read("src/frontend/features/activity/components/WorkforceDevicePanel.js")
+    read("src/frontend/features/activity/components/WorkforceDevicePanel.js"),
+    read("src/frontend/features/activity/components/MonitoringAuditLog.js")
   ];
   for (const source of sources) {
     assert.doesNotMatch(source, /deviceIdentifier|identifierHash|typedText|keyCode|mouseCoordinates|keyboardEventCount|mouseEventCount|rawMetadata/);

@@ -13,7 +13,7 @@ export async function GET(request) {
       ACTIVITY_PERMISSIONS.viewTeam,
       ACTIVITY_PERMISSIONS.viewAll
     ]);
-    enforceActivityRateLimit(request, "devices-read", session.profile.id, { limit: 120, windowMs: 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "devices-read", { limit: 120, windowMs: 60 * 1000 });
     const filters = parseDeviceFilters(new URL(request.url).searchParams);
     const scope = await resolveActivityScope(session);
     const offset = decodeCursor(filters.cursor);

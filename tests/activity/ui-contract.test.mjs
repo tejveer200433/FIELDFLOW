@@ -7,6 +7,7 @@ const root = process.cwd();
 const read = path => readFileSync(join(root, path), "utf8");
 const page = read("src/frontend/features/activity/components/EmployeeActivityPage.js");
 const client = read("src/frontend/features/activity/api/client.js");
+const apiClient = read("src/frontend/lib/apiClient.js");
 const shell = read("src/frontend/components/layout/EmployeeShell.js");
 const deviceList = read("src/frontend/features/activity/components/ActivityDeviceList.js");
 const privacy = read("src/frontend/features/activity/components/ActivityPrivacyNotice.js");
@@ -37,6 +38,28 @@ test("session controls are explicit and do not auto-start", () => {
   assert.match(page, /window\.confirm\("Stop your current tracking session\?"\)/);
   assert.doesNotMatch(current, /useEffect\([\s\S]{0,200}onStart\(/);
   assert.match(page, /busy === "start" \|\| busy === "stop"/);
+});
+
+test("authenticated browser requests recover once from an expired background-tab token", () => {
+  assert.match(apiClient, /let refreshRequest = null/);
+  assert.match(apiClient, /function refreshSessionOnce\(\)/);
+  assert.match(apiClient, /if \(refreshRequest\) return refreshRequest/);
+  assert.match(apiClient, /if \(response\.status !== 401\) return response/);
+  assert.match(apiClient, /retryAccessToken === accessToken/);
+  assert.match(apiClient, /return fetchWithToken\(input, init, retryAccessToken\)/);
+  assert.doesNotMatch(apiClient, /auth\.signOut/);
+});
+
+test("manual tracking can be attributed to assigned projects and tasks without making either required", () => {
+  const current = read("src/frontend/features/activity/components/CurrentTrackingSession.js");
+  assert.match(current, /apiJson\("\/api\/projects"/);
+  assert.match(current, /apiJson\("\/api\/tasks"/);
+  assert.match(current, /hasPermission\(access, "projects\.view_self"\)/);
+  assert.match(current, /hasPermission\(access, "tasks\.view_self"\)/);
+  assert.match(current, /projectId: projectId \|\| null/);
+  assert.match(current, /taskId: taskId \|\| null/);
+  assert.match(current, /You can still start tracking without selecting a project or task/);
+  assert.doesNotMatch(current, /<select className="input" disabled><option value="">None<\/option><\/select>/);
 });
 
 test("monitoring and empty states are represented", () => {

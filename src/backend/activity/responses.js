@@ -42,16 +42,18 @@ export function activityFailure(error) {
       }
     });
   }
-  const knownStatus = [401, 403].includes(error?.status) ? error.status : 500;
+  const knownStatus = [401, 403, 503].includes(error?.status) ? error.status : 500;
   if (knownStatus === 500) console.error("[Activity API]", error);
   return Response.json({
     success: false,
     error: {
-      code: knownStatus === 401 ? "AUTHENTICATION_REQUIRED" : knownStatus === 403 ? "ACCESS_DENIED" : "INTERNAL_ERROR",
+      code: knownStatus === 401 ? "AUTHENTICATION_REQUIRED" : knownStatus === 403 ? "ACCESS_DENIED" : knownStatus === 503 ? "SERVICE_UNAVAILABLE" : "INTERNAL_ERROR",
       message: knownStatus === 401
         ? "Authentication required."
         : knownStatus === 403
           ? "You do not have permission for this activity resource."
+          : knownStatus === 503
+            ? "The authentication service is temporarily unavailable. Please try again."
           : "The activity request could not be completed."
     }
   }, { status: knownStatus, headers: { "Cache-Control": "no-store" } });

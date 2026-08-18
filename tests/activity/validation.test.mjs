@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   ActivityValidationError,
+  parseAuditFilters,
   parseDeviceRegistration,
   parseDeviceUpdate,
   parseHeartbeat,
@@ -205,4 +206,10 @@ test("screenshot deletion accepts a bounded unique UUID list", () => {
 
 test("team filters reject unknown query keys", () => {
   assert.throws(() => parseTeamFilters(new URLSearchParams("rawSamples=true")), error => error.code === "UNKNOWN_FIELD");
+});
+
+test("audit filters are pagination-only and bounded", () => {
+  assert.deepEqual(parseAuditFilters(new URLSearchParams("limit=50")), { limit: 50, cursor: null });
+  assert.throws(() => parseAuditFilters(new URLSearchParams("metadata=true")), error => error.code === "UNKNOWN_FIELD");
+  assert.throws(() => parseAuditFilters(new URLSearchParams("limit=101")), ActivityValidationError);
 });

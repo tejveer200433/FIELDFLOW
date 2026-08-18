@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { enable as enableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
-import { createFieldFlowAuth, verifyEmployeeAccess } from "./lib/auth";
+import { clearFieldFlowSession, createFieldFlowAuth, verifyEmployeeAccess } from "./lib/auth";
 import { createActivityApi } from "./lib/api";
+import { createSessionManager } from "./lib/sessionManager";
 import { isApplicationApproved } from "./lib/applicationAccess";
 import { captureCodingSample, captureSample } from "./lib/sampler";
 import { isHeartbeatRateLimit, shouldSendHeartbeat } from "./lib/heartbeat";
@@ -34,15 +35,12 @@ function Login({ supabase, onSignedIn }) {
     event.preventDefault();
     setBusy(true);
     setError("");
-    let authenticated = false;
     try {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) throw signInError;
-      authenticated = true;
       await onSignedIn();
       setPassword("");
     } catch (submitError) {
-      if (!authenticated) await supabase.auth.signOut({ scope: "local" }).catch(() => {});
       setPassword("");
       setError(submitError.message || "Sign in failed.");
     } finally {
@@ -114,7 +112,6 @@ function PolicyConsent({ policy, onAccept, onSignOut }) {
 
 export default function App() {
   const supabase = useMemo(() => config.valid ? createFieldFlowAuth(config) : null, []);
-  const api = useMemo(() => supabase ? createActivityApi({ baseUrl: config.fieldFlowUrl, supabase }) : null, [supabase]);
   const [account, setAccount] = useState(null);
   const [policy, setPolicy] = useState(null);
   const [device, setDevice] = useState(null);
@@ -134,6 +131,24 @@ export default function App() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
+  const handleAuthEvent = useCallback(async (event, level = "info") => {
+    await agentLog(event, level);
+    if (event !== "auth_session_revoked") return;
+    trackingSessionId.current = null;
+    setAccount(null);
+    setPolicy(null);
+    setSession(null);
+    setScreenshotCaptureEnabled(false);
+    await invoke("set_input_collection_enabled", { enabled: false }).catch(() => {});
+    await invoke("set_agent_state", { key: "tracking_active", value: "false" }).catch(() => {});
+    await invoke("set_agent_state", { key: "tracking_session_id", value: "" }).catch(() => {});
+  }, []);
+  const sessionManager = useMemo(() => supabase
+    ? createSessionManager({ supabase, onEvent: handleAuthEvent })
+    : null, [handleAuthEvent, supabase]);
+  const api = useMemo(() => supabase && sessionManager
+    ? createActivityApi({ baseUrl: config.fieldFlowUrl, supabase, sessionManager })
+    : null, [sessionManager, supabase]);
   const deviceId = device?.deviceId;
   const timers = useRef([]);
   const sampling = useRef(false);
@@ -293,7 +308,7 @@ export default function App() {
     setLoading(true);
     setError("");
     try {
-      const currentAccount = await verifyEmployeeAccess(supabase);
+      const currentAccount = await verifyEmployeeAccess(supabase, sessionManager);
       setAccount(currentAccount);
       const [currentPolicy, currentSession] = await Promise.all([
         api.getPolicy(),
@@ -382,13 +397,12 @@ export default function App() {
     } catch (initializationError) {
       await agentLog("login_failed", "warn");
       setError(initializationError.message || "The agent could not initialize.");
-      const { data } = await supabase.auth.getSession();
-      if (!data.session) setAccount(null);
+      if (["AUTH_SESSION_MISSING", "AUTH_SESSION_REVOKED"].includes(initializationError?.code)) setAccount(null);
       return false;
     } finally {
       setLoading(false);
     }
-  }, [api, refreshQueue, register, sendHeartbeat, supabase]);
+  }, [api, refreshQueue, register, sendHeartbeat, sessionManager, supabase]);
 
   useEffect(() => {
     if (import.meta.env.DEV) return;
@@ -417,12 +431,20 @@ export default function App() {
     let cancelled = false;
     let retryTimer;
     const attemptStartup = async (attempt = 0) => {
-      const { data } = await supabase.auth.getSession();
-      if (cancelled) return;
-      if (!data.session) {
-        setLoading(false);
+      try {
+        await sessionManager.getValidSession();
+      } catch (sessionError) {
+        if (cancelled) return;
+        if (!sessionError.retryable) {
+          setLoading(false);
+          return;
+        }
+        const delay = Math.min(60_000, 5_000 * 2 ** attempt);
+        await agentLog("startup_retry_scheduled", "warn");
+        retryTimer = window.setTimeout(() => attemptStartup(attempt + 1), delay);
         return;
       }
+      if (cancelled) return;
       const succeeded = await initialize();
       if (cancelled || succeeded) return;
       const delay = Math.min(60_000, 5_000 * 2 ** attempt);
@@ -435,7 +457,7 @@ export default function App() {
       window.clearTimeout(retryTimer);
       clearTimers();
     };
-  }, [clearTimers, initialize, supabase]);
+  }, [clearTimers, initialize, sessionManager, supabase]);
 
   useEffect(() => {
     const resumeHeartbeat = async () => {
@@ -597,8 +619,7 @@ export default function App() {
       const connected = navigator.onLine;
       setOnline(connected);
       if (!connected) throw new Error("The network is not ready after system resume.");
-      const { data, error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError || !data.session) throw refreshError || new Error("The saved session is unavailable.");
+      await sessionManager.getValidSession({ forceRefresh: true });
       if (!account || !deviceId) {
         await initialize();
       } else {
@@ -620,7 +641,7 @@ export default function App() {
     } finally {
       recoveryInFlight.current = false;
     }
-  }, [account, api, deviceId, initialize, performSync, policy, reconcileWithServer, sendHeartbeat, supabase]);
+  }, [account, api, deviceId, initialize, performSync, policy, reconcileWithServer, sendHeartbeat, sessionManager]);
 
   useEffect(() => {
     const unlisten = listen("agent-resume-requested", recoverAfterSystemActivity);
@@ -856,7 +877,7 @@ export default function App() {
     clearTimers();
     trackingDesired.current = false;
     await invoke("set_agent_state", { key: "tracking_desired", value: "false" });
-    await supabase.auth.signOut({ scope: "local" });
+    await clearFieldFlowSession(supabase);
     await agentLog("logout_succeeded");
     setAccount(null);
     setPolicy(null);

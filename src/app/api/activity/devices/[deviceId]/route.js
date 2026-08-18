@@ -12,7 +12,7 @@ export async function PATCH(request, { params }) {
       ACTIVITY_PERMISSIONS.viewSelf,
       ACTIVITY_PERMISSIONS.managePolicies
     ]);
-    enforceActivityRateLimit(request, "device-update", session.profile.id, { limit: 20, windowMs: 5 * 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "device-update", { limit: 20, windowMs: 5 * 60 * 1000 });
     const { deviceId } = await params;
     if (!isUuid(deviceId)) throw new ActivityError("INVALID_DEVICE_ID", "A valid device ID is required.", 400);
     const body = parseDeviceUpdate(await readActivityJson(request));

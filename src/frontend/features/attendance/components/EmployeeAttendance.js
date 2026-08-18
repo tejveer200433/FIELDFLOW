@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarRange, Clock3, Coffee, MapPin, Radio, TimerReset } from "lucide-react";
 import { useEmployeeTracking } from "@/frontend/features/activity/context/EmployeeTrackingContext";
 import { durationSeconds, formatDuration } from "@/shared/time";
@@ -35,7 +35,7 @@ function scheduledTime(record) {
 
 function AttendanceToday() {
   const tracking = useEmployeeTracking();
-  const [identity, setIdentity] = useState({ employeeId: "employee-demo", employee: "Employee" });
+  const loadRequest = useRef(null);
   const [records, setRecords] = useState([]);
   const [locations, setLocations] = useState([]);
   const [management, setManagement] = useState({ breaks: [], schedules: [], rosters: [], holidays: [], templates: [] });
@@ -44,28 +44,34 @@ function AttendanceToday() {
   const [message, setMessage] = useState("");
 
   const load = useCallback(async () => {
-    const [attendance, attendanceLocations, attendanceManagement] = await Promise.all([
+    if (loadRequest.current) return loadRequest.current;
+    const request = Promise.all([
       apiJson("/api/attendance", { cache: "no-store" }),
       apiJson("/api/attendance-locations", { cache: "no-store" }),
       apiJson("/api/attendance-management", { cache: "no-store" })
-    ]);
-    setRecords(attendance.data);
-    setLocations(attendanceLocations.data);
-    setManagement(attendanceManagement.data);
+    ]).then(([attendance, attendanceLocations, attendanceManagement]) => {
+      setRecords(attendance.data);
+      setLocations(attendanceLocations.data);
+      setManagement(attendanceManagement.data);
+    }).finally(() => { loadRequest.current = null; });
+    loadRequest.current = request;
+    return request;
   }, []);
 
   useEffect(() => {
-    const current = {
-      employeeId: localStorage.getItem("fieldflow-employee-id") || "employee-demo",
-      employee: localStorage.getItem("fieldflow-name") || "Employee"
-    };
-    setIdentity(current);
     load().catch(error => setMessage(error.message));
     const clock = setInterval(() => setNow(Date.now()), 1000);
-    const refresh = setInterval(() => load().catch(() => {}), 10000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible" && navigator.onLine) load().catch(() => setMessage("Attendance could not refresh. Existing records are unchanged."));
+    };
+    const refresh = setInterval(refreshWhenVisible, 30000);
+    window.addEventListener("online", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
       clearInterval(clock);
       clearInterval(refresh);
+      window.removeEventListener("online", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [load]);
 
@@ -106,9 +112,7 @@ function AttendanceToday() {
     setBusy(true);
     setMessage("");
     try {
-      const location = action === "check-in"
-        ? await tracking.startTracking()
-        : await tracking.getPosition();
+      const location = await tracking.getPosition();
       const payload = await apiJson("/api/attendance", {
         method: "POST",
         body: JSON.stringify({
@@ -117,15 +121,24 @@ function AttendanceToday() {
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
         })
       });
-      if (action === "check-out") await tracking.stopTracking();
-      setMessage(action === "check-in"
+      let trackingWarning = "";
+      if (action === "check-in") {
+        try {
+          await tracking.startTracking(location);
+        } catch {
+          trackingWarning = " Live location could not start; keep this page open and reconnect to retry.";
+        }
+      } else {
+        await tracking.stopTracking();
+      }
+      const resultMessage = action === "check-in"
         ? payload.data.shiftName
           ? `Checked in for ${payload.data.shiftName} (${scheduledTime(payload.data)}). Status: ${payload.data.status}.`
           : `Checked in at ${payload.data.checkInLocation.geofenceName || "an attendance location"}, but no work schedule was assigned for today.`
-        : `Checked out. Total shift time: ${payload.data.hours}.`);
+        : `Checked out. Total shift time: ${payload.data.hours}.`;
+      setMessage(`${resultMessage}${trackingWarning}`);
       await load();
     } catch (error) {
-      if (action === "check-in") await tracking.stopTracking().catch(() => {});
       setMessage(error.message);
     } finally {
       setBusy(false);
@@ -215,7 +228,7 @@ function AttendanceToday() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-widest text-slate-500">Live location</p>
-          <strong>{tracking.status === "sharing" ? "Sharing with manager and admin" : tracking.status === "requesting" ? "Requesting GPS…" : "Not sharing"}</strong>
+          <strong>{tracking.status === "sharing" ? "Sharing with manager and admin" : tracking.status === "requesting" ? "Requesting GPS…" : tracking.status === "offline" ? "Waiting for connection" : tracking.status === "error" ? "Location sharing needs attention" : "Not sharing"}</strong>
         </div>
         <span className={`grid h-12 w-12 place-items-center rounded-full ${tracking.status === "sharing" ? "bg-emerald-50 text-emerald-600" : "bg-blue-50 text-blue-600"}`}><Radio /></span>
       </div>

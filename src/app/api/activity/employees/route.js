@@ -13,7 +13,7 @@ export async function GET(request) {
       ACTIVITY_PERMISSIONS.viewTeam,
       ACTIVITY_PERMISSIONS.viewAll
     ]);
-    enforceActivityRateLimit(request, "employees-read", session.profile.id, { limit: 120, windowMs: 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "employees-read", { limit: 120, windowMs: 60 * 1000 });
     const filters = parseEmployeeFilters(new URL(request.url).searchParams);
     const scope = await resolveActivityScope(session);
     const profiles = await getActivityProfiles(session.client, scope.type === "all" ? null : scope.userIds);

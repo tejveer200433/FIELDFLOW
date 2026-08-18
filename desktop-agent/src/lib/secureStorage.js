@@ -31,8 +31,13 @@ function storageError(operation, error) {
   );
 }
 
+function isPrimaryAuthSessionKey(key) {
+  return typeof key === "string" && key.endsWith("-auth-token");
+}
+
 export function createSecureSessionStorage(invokeImpl = invoke) {
   let operation = Promise.resolve();
+  let explicitRemovalDepth = 0;
 
   function exclusive(callback) {
     const result = operation.then(callback, callback);
@@ -80,8 +85,8 @@ export function createSecureSessionStorage(invokeImpl = invoke) {
         active: typeof parsed.active === "string" ? parsed.active : null,
         backup: typeof parsed.backup === "string" ? parsed.backup : null
       };
-    } catch {
-      return { active: null, backup: null };
+    } catch (error) {
+      throw new Error("The secure-session manifest is not valid.", { cause: error });
     }
   }
 
@@ -95,14 +100,30 @@ export function createSecureSessionStorage(invokeImpl = invoke) {
   }
 
   return {
+    async withExplicitRemoval(callback) {
+      explicitRemovalDepth += 1;
+      try {
+        return await callback();
+      } finally {
+        explicitRemovalDepth = Math.max(0, explicitRemovalDepth - 1);
+      }
+    },
     async getItem(key) {
       return exclusive(async () => {
         try {
           const manifest = await readManifest(key);
-          const active = await readGeneration(key, manifest.active);
-          if (active !== null) return active;
-          const backup = await readGeneration(key, manifest.backup);
-          if (backup !== null) return backup;
+          if (manifest.active) {
+            const active = await readGeneration(key, manifest.active);
+            if (active !== null) return active;
+            // A refresh token is single-use and rotates. Falling back to the
+            // previous generation can replay an already-consumed token and
+            // revoke the whole Supabase token family. Preserve the broken
+            // generation for recovery and surface a retryable storage error.
+            throw new Error("The active secure-session generation is incomplete.");
+          }
+          if (manifest.backup) {
+            throw new Error("The secure-session manifest has no active generation.");
+          }
           return readLegacy(key);
         } catch (error) {
           throw storageError("read", error);
@@ -115,7 +136,7 @@ export function createSecureSessionStorage(invokeImpl = invoke) {
           || `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
         let chunkCount = 0;
         let committed = false;
-        let obsoleteGeneration = null;
+        let obsoleteGenerations = [];
         try {
           const chunks = splitSecureValue(value);
           chunkCount = chunks.length;
@@ -132,12 +153,10 @@ export function createSecureSessionStorage(invokeImpl = invoke) {
           }
           await invokeImpl("secure_write", {
             key: `${key}:manifest`,
-            value: JSON.stringify({ active: generation, backup: previous.active || previous.backup || null })
+            value: JSON.stringify({ active: generation, backup: null })
           });
           committed = true;
-          obsoleteGeneration = previous.backup && previous.backup !== previous.active
-            ? previous.backup
-            : null;
+          obsoleteGenerations = [...new Set([previous.active, previous.backup].filter(Boolean))];
         } catch (error) {
           if (!committed) {
             for (let index = 0; index < chunkCount; index += 1) {
@@ -147,12 +166,16 @@ export function createSecureSessionStorage(invokeImpl = invoke) {
           }
           throw storageError("save", error);
         }
-        if (obsoleteGeneration) {
+        for (const obsoleteGeneration of obsoleteGenerations) {
           await deleteGeneration(key, obsoleteGeneration).catch(() => {});
         }
       });
     },
     async removeItem(key) {
+      // Supabase automatically removes its stored session after some refresh
+      // failures. The agent must retain that credential until either a newer
+      // rotated session replaces it or the employee intentionally signs out.
+      if (isPrimaryAuthSessionKey(key) && explicitRemovalDepth === 0) return;
       return exclusive(async () => {
         try {
           const manifest = await readManifest(key);

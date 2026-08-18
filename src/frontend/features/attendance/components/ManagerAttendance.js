@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarRange, CheckCircle2, ClipboardCheck, Clock3, Download, MapPinned, TimerReset, UsersRound, WalletCards } from "lucide-react";
 import { durationSeconds, formatDuration } from "@/shared/time";
 import { apiJson } from "@/frontend/lib/apiClient";
@@ -30,20 +30,34 @@ function GeofenceResult({ location, label }) {
 }
 
 function AttendanceOverview() {
+  const loadRequest = useRef(null);
   const [items, setItems] = useState([]);
   const [now, setNow] = useState(Date.now());
   const [message, setMessage] = useState("");
-  const load = useCallback(() => apiJson("/api/attendance", { cache: "no-store" })
-    .then(payload => setItems(payload.data))
-    .catch(error => setMessage(error.message)), []);
+  const load = useCallback(() => {
+    if (loadRequest.current) return loadRequest.current;
+    const request = apiJson("/api/attendance", { cache: "no-store" })
+      .then(payload => { setItems(payload.data); setMessage(""); })
+      .catch(error => setMessage(error.message))
+      .finally(() => { loadRequest.current = null; });
+    loadRequest.current = request;
+    return request;
+  }, []);
 
   useEffect(() => {
     load();
     const clock = setInterval(() => setNow(Date.now()), 1000);
-    const refresh = setInterval(load, 5000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible" && navigator.onLine) load();
+    };
+    const refresh = setInterval(refreshWhenVisible, 15000);
+    window.addEventListener("online", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
       clearInterval(clock);
       clearInterval(refresh);
+      window.removeEventListener("online", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [load]);
 

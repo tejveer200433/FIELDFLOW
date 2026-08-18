@@ -29,7 +29,8 @@ test("the packaged agent repairs startup and recovery registration", () => {
 
 test("system recovery refreshes authentication, policy, session, heartbeat and sync", () => {
   assert.doesNotMatch(app, /supabase\.auth\.startAutoRefresh\(\)/);
-  assert.match(app, /supabase\.auth\.refreshSession\(\)/);
+  assert.doesNotMatch(app, /supabase\.auth\.refreshSession\(\)/);
+  assert.match(app, /sessionManager\.getValidSession\(\{ forceRefresh: true \}\)/);
   assert.match(app, /const currentPolicy = await api\.getPolicy\(\)/);
   assert.match(app, /await reconcileWithServer\(currentPolicy\)/);
   assert.match(app, /force: true/);

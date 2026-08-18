@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request) {
   try {
     const session = await requireActivitySession(request, [ACTIVITY_PERMISSIONS.viewSelf]);
-    enforceActivityRateLimit(request, "web-access-policy-read", session.profile.id, { limit: 12, windowMs: 60000 });
+    await enforceActivityRateLimit(session.client, "web-access-policy-read", { limit: 12, windowMs: 60000 });
     const deviceId = new URL(request.url).searchParams.get("deviceId");
     if (!deviceId) throw new ActivityError("Device id is required.", "VALIDATION_FAILED", 400);
     await requireOwnedDevice(session.client, session.profile.id, deviceId);

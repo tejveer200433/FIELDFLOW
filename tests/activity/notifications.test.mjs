@@ -55,7 +55,7 @@ test("daily report submission notifies reviewers after the insert succeeds", () 
 
 test("task completion notifies assigners, but other status transitions do not", () => {
   const source = read("src/app/api/tasks/route.js");
-  assert.match(source, /if \(body\.status === "Completed"\) \{\s*await notifyEvent\(session\.client, \{[\s\S]*permissionKey: "tasks\.assign"[\s\S]*type: "task_completed"[\s\S]*entityType: "task"/);
+  assert.match(source, /if \(statusRequested && body\.status === "Completed"\) \{\s*await notifyEvent\(session\.client, \{[\s\S]*permissionKey: "tasks\.assign"[\s\S]*type: "task_completed"[\s\S]*entityType: "task"/);
 });
 
 test("attendance geofence rejection notifies team viewers without changing the employee's 403", () => {
@@ -82,4 +82,20 @@ test("RoleShell renders a real unread badge and notification list instead of the
   assert.match(source, /\{unreadCount > 9 \? "9\+" : unreadCount\}/);
   assert.match(source, /notifications\.map\(item =>/);
   assert.match(source, /onClick=\{markAllRead\}/);
+});
+
+test("notification polling is overlap-safe, reconnect-aware, and exposes failures", () => {
+  const hook = read("src/frontend/lib/notificationsClient.js");
+  const managerShell = read("src/frontend/components/layout/RoleShell.js");
+  const employeeShell = read("src/frontend/components/layout/EmployeeShell.js");
+  assert.match(hook, /if \(inFlight\.current\) return inFlight\.current/);
+  assert.match(hook, /document\.visibilityState !== "visible" \|\| !navigator\.onLine/);
+  assert.match(hook, /interval \* \(2 \*\* failures\)/);
+  assert.match(hook, /Notifications could not refresh\. Existing items are unchanged\./);
+  assert.match(hook, /Notifications could not be marked as read\. Please try again\./);
+  assert.doesNotMatch(hook, /\.catch\(\(\) => \{\}\)/);
+  for (const shell of [managerShell, employeeShell]) {
+    assert.match(shell, /notificationError/);
+    assert.match(shell, /refreshNotifications/);
+  }
 });

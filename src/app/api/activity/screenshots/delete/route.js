@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request) {
   try {
     const session = await requireActivitySession(request, [ACTIVITY_PERMISSIONS.managePolicies]);
-    enforceActivityRateLimit(request, "screenshot-delete", session.profile.id, { limit: 10, windowMs: 5 * 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "screenshot-delete", { limit: 10, windowMs: 5 * 60 * 1000 });
     const { screenshotIds } = parseScreenshotDeletion(await readActivityJson(request));
     const { data: screenshots, error: lookupError } = await session.client
       .from("activity_screenshots")

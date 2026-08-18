@@ -167,3 +167,42 @@ test("failure to clean an obsolete credential never invalidates the committed se
 
   assert.equal(await storage.getItem("supabase-auth-token"), "third");
 });
+
+test("automatic auth cleanup cannot erase a saved FieldFlow login", async () => {
+  const credentials = new Map();
+  const invoke = async (command, payload) => {
+    if (command === "secure_read") return credentials.get(payload.key) ?? null;
+    if (command === "secure_write") { credentials.set(payload.key, payload.value); return; }
+    if (command === "secure_delete") { credentials.delete(payload.key); return; }
+    throw new Error(`Unexpected command: ${command}`);
+  };
+  const storage = createSecureSessionStorage(invoke);
+  const session = JSON.stringify({ access_token: "access", refresh_token: "refresh" });
+  await storage.setItem("sb-project-auth-token", session);
+
+  await storage.removeItem("sb-project-auth-token");
+  assert.equal(await storage.getItem("sb-project-auth-token"), session);
+
+  await storage.withExplicitRemoval(() => storage.removeItem("sb-project-auth-token"));
+  assert.equal(await storage.getItem("sb-project-auth-token"), null);
+});
+
+test("a missing active generation never replays a rotated backup token", async () => {
+  const credentials = new Map();
+  const invoke = async (command, payload) => {
+    if (command === "secure_read") return credentials.get(payload.key) ?? null;
+    if (command === "secure_write") { credentials.set(payload.key, payload.value); return; }
+    if (command === "secure_delete") { credentials.delete(payload.key); return; }
+    throw new Error(`Unexpected command: ${command}`);
+  };
+  const storage = createSecureSessionStorage(invoke);
+  await storage.setItem("sb-project-auth-token", "old-rotated-session");
+  await storage.setItem("sb-project-auth-token", "current-session");
+  const manifest = JSON.parse(credentials.get("sb-project-auth-token:manifest"));
+  credentials.delete(`sb-project-auth-token:g:${manifest.active}:0`);
+
+  await assert.rejects(
+    storage.getItem("sb-project-auth-token"),
+    /active secure-session generation is incomplete/
+  );
+});

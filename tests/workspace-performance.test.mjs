@@ -42,10 +42,31 @@ test("non-critical notifications wait for verified access and avoid hidden-tab p
   assert.match(hook, /initialDelay = 1200/);
   assert.match(hook, /interval = 30000/);
   assert.match(hook, /document\.visibilityState === "visible"/);
+  assert.match(hook, /inFlight\.current/);
+  assert.match(hook, /navigator\.onLine/);
+  assert.match(hook, /window\.addEventListener\("online", refreshWhenAvailable\)/);
+  assert.match(hook, /Math\.min\(5 \* 60 \* 1000/);
+  assert.doesNotMatch(hook, /setInterval/);
 });
 
 test("the manager dashboard defers its map until primary services settle", async () => {
   const source = await read("src/frontend/features/dashboard/components/ManagerDashboard.js");
   assert.match(source, /Object\.values\(serviceState\)\.every\(status => status !== "loading"\)/);
   assert.match(source, /mapReady \? <LiveTeamMap \/>/);
+});
+
+test("the admin dashboard has a separate map-first live operations view", async () => {
+  const [dashboard, workspace] = await Promise.all([
+    read("src/frontend/features/dashboard/components/AdminDashboard.js"),
+    read("src/frontend/features/manager/components/ManagerWorkspace.js")
+  ]);
+  assert.match(workspace, /role === "admin" \? <AdminDashboard access=\{access\} \/> : <ManagerDashboard access=\{access\} \/>/);
+  assert.match(dashboard, /Live Operations/);
+  assert.match(dashboard, /Dispatch Queue/);
+  assert.match(dashboard, /Site Coverage \(Today\)/);
+  assert.match(dashboard, /mapReady \? <LiveTeamMap \/>/);
+  for (const endpoint of ["/api/tasks", "/api/attendance", "/api/employees", "/api/sos"]) {
+    assert.match(dashboard, new RegExp(endpoint));
+  }
+  assert.doesNotMatch(dashboard, /managerEmployees|managerTasks|demo|mock/i);
 });

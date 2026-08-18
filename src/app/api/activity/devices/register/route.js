@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request) {
   try {
     const session = await requireActivitySession(request, [ACTIVITY_PERMISSIONS.viewSelf]);
-    enforceActivityRateLimit(request, "device-register", session.profile.id, { limit: 5, windowMs: 60 * 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "device-register", { limit: 5, windowMs: 60 * 60 * 1000 });
     const body = parseDeviceRegistration(await readActivityJson(request));
     const deviceHash = createHash("sha256").update(body.deviceIdentifier, "utf8").digest("hex");
     const { data, error } = await session.client.rpc("activity_register_device", {

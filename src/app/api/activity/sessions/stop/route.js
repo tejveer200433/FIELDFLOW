@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request) {
   try {
     const session = await requireActivitySession(request, [ACTIVITY_PERMISSIONS.viewSelf]);
-    enforceActivityRateLimit(request, "session-stop", session.profile.id, { limit: 20, windowMs: 5 * 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "session-stop", { limit: 20, windowMs: 5 * 60 * 1000 });
     const body = parseSessionStop(await readActivityJson(request));
     const { data, error } = await session.client.rpc("activity_stop_session", {
       p_session_id: body.sessionId,

@@ -1,3 +1,5 @@
+import { createSessionManager } from "./sessionManager.js";
+
 export class ActivityApiError extends Error {
   constructor(message, code, status, retryAfterSeconds = null) {
     super(message);
@@ -8,22 +10,19 @@ export class ActivityApiError extends Error {
   }
 }
 
-export function createActivityApi({ baseUrl, supabase, fetchImpl = fetch }) {
-  async function sessionToken({ forceRefresh = false } = {}) {
-    let { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new ActivityApiError("Sign in to continue.", "AUTHENTICATION_REQUIRED", 401);
-    if (forceRefresh || (session.expires_at && session.expires_at * 1000 - Date.now() < 60_000)) {
-      const refreshed = await supabase.auth.refreshSession();
-      session = refreshed.data.session;
-    }
-    if (!session?.access_token) {
+export function createActivityApi({ baseUrl, supabase, sessionManager, fetchImpl = fetch }) {
+  const authentication = sessionManager || createSessionManager({ supabase });
+  async function sessionToken({ forceRefresh = false, rejectedAccessToken = null } = {}) {
+    try {
+      const session = await authentication.getValidSession({ forceRefresh, rejectedAccessToken });
+      return session.access_token;
+    } catch (error) {
       throw new ActivityApiError(
-        "Your FieldFlow session expired. Sign out and sign in again.",
-        "AUTHENTICATION_REQUIRED",
-        401
+        error?.message || "Your FieldFlow session could not be verified.",
+        error?.retryable ? "AUTHENTICATION_DELAYED" : "AUTHENTICATION_REQUIRED",
+        error?.retryable ? 0 : 401
       );
     }
-    return session.access_token;
   }
 
   async function request(path, options = {}) {
@@ -56,7 +55,7 @@ export function createActivityApi({ baseUrl, supabase, fetchImpl = fetch }) {
       }
       if (response.status === 401 && !retriedAuthentication) {
         retriedAuthentication = true;
-        accessToken = await sessionToken({ forceRefresh: true });
+        accessToken = await sessionToken({ forceRefresh: true, rejectedAccessToken: accessToken });
         continue;
       }
       const payload = await response.json().catch(() => null);

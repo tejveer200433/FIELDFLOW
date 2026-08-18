@@ -1,8 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import { hasPermission } from "@/shared/permissions";
+import { isTransientServiceError } from "@/shared/serviceErrors";
 
 export class ApiError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
+}
+
+function throwIfServiceUnavailable(error, message) {
+  if (isTransientServiceError(error)) throw new ApiError(message, 503);
 }
 
 export async function requireSession(request, roles = []) {
@@ -15,14 +20,37 @@ export async function requireSession(request, roles = []) {
     global: { headers: { Authorization: authorization } },
     auth: { persistSession: false, autoRefreshToken: false }
   });
-  const { data: auth, error: authError } = await client.auth.getUser();
+  let authResult;
+  try {
+    authResult = await client.auth.getUser();
+  } catch (error) {
+    throwIfServiceUnavailable(error, "Authentication service temporarily unavailable. Please try again.");
+    throw error;
+  }
+  const { data: auth, error: authError } = authResult;
+  throwIfServiceUnavailable(authError, "Authentication service temporarily unavailable. Please try again.");
   if (authError || !auth.user) throw new ApiError("Invalid or expired session.", 401);
-  let { data: profile, error: profileError } = await client.from("profiles").select("id,full_name,email,role,requested_role,approval_status,department,active,avatar_path").eq("id", auth.user.id).single();
+
+  let profileResult;
+  try {
+    profileResult = await client.from("profiles").select("id,full_name,email,role,requested_role,approval_status,department,active,avatar_path").eq("id", auth.user.id).single();
+  } catch (error) {
+    throwIfServiceUnavailable(error, "Profile service temporarily unavailable. Please try again.");
+    throw error;
+  }
+  let { data: profile, error: profileError } = profileResult;
   if (profileError?.code === "42703" || profileError?.code === "PGRST204") {
-    const fallback = await client.from("profiles").select("id,full_name,email,role,requested_role,approval_status,department,active").eq("id", auth.user.id).single();
+    let fallback;
+    try {
+      fallback = await client.from("profiles").select("id,full_name,email,role,requested_role,approval_status,department,active").eq("id", auth.user.id).single();
+    } catch (error) {
+      throwIfServiceUnavailable(error, "Profile service temporarily unavailable. Please try again.");
+      throw error;
+    }
     profile = fallback.data;
     profileError = fallback.error;
   }
+  throwIfServiceUnavailable(profileError, "Profile service temporarily unavailable. Please try again.");
   if (profileError || !profile) throw new ApiError("Your FieldFlow profile is not available.", 403);
   if (!profile.active || profile.approval_status !== "approved") throw new ApiError("This account is waiting for administrator approval.", 403);
   if (roles.length && !roles.includes(profile.role)) throw new ApiError("You do not have permission for this action.", 403);

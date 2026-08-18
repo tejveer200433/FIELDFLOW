@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/frontend/lib/supabase";
 import { workspaceForAccess } from "@/shared/permissions";
+import { isTransientServiceError } from "@/shared/serviceErrors";
 
 export function saveIdentity({ role, email, name, id, access }) {
   localStorage.setItem("fieldflow-role", role);
@@ -20,53 +21,74 @@ export function useAuthGuard(portal) {
 
   useEffect(() => {
     let active = true;
-    async function verify() {
+    let retryTimer = null;
+
+    function retry(attempt) {
+      if (!active) return;
+      clearTimeout(retryTimer);
+      const delay = Math.min(30000, 1500 * (2 ** Math.min(attempt, 4)));
+      retryTimer = setTimeout(() => verify(attempt + 1), delay);
+    }
+
+    async function verify(attempt = 0) {
       if (!supabase) {
         router.replace(`/login/${portal}`);
         return;
       }
-      const { data } = await supabase.auth.getSession();
-      const user = data.session?.user;
-      if (!user) { router.replace(`/login/${portal}`); return; }
-      let [{ data: profile, error }, { data: accessData, error: accessError }] = await Promise.all([
-        supabase.from("profiles").select("id,email,full_name,role,department,approval_status,active,avatar_path").eq("id", user.id).single(),
-        supabase.rpc("get_my_access_context")
-      ]);
-      if (error?.code === "42703" || error?.code === "PGRST204") {
-        const fallback = await supabase.from("profiles").select("id,email,full_name,role,department,approval_status,active").eq("id", user.id).single();
-        profile = fallback.data;
-        error = fallback.error;
-      }
-      if (error || !profile || profile.approval_status !== "approved" || !profile.active) {
-        await supabase.auth.signOut();
-        router.replace(`/login/${portal}?error=access`);
-        return;
-      }
-      if (accessError || !accessData) {
-        router.replace(`/login/${portal}?error=permissions`);
-        return;
-      }
-      const resolvedAccess = accessData;
-      const workspace = workspaceForAccess(resolvedAccess);
-      if (portal !== workspace) {
-        router.replace(`/${workspace}`);
-        return;
-      }
-      profile.avatarUrl = null;
-      saveIdentity({ role: profile.role, email: profile.email, name: profile.full_name, id: profile.id, access: resolvedAccess });
-      if (active) setAccess({ ...resolvedAccess, profile });
-      if (profile.avatar_path) {
-        const { data: avatar } = await supabase.storage.from("profile-images").createSignedUrl(profile.avatar_path, 60 * 60);
-        if (active && avatar?.signedUrl) {
-          setAccess(current => current ? { ...current, profile: { ...current.profile, avatarUrl: avatar.signedUrl } } : current);
+      try {
+        const { data, error: sessionError } = await supabase.auth.getSession();
+        if (isTransientServiceError(sessionError)) return retry(attempt);
+        const user = data.session?.user;
+        if (!user) { router.replace(`/login/${portal}`); return; }
+        let [{ data: profile, error }, { data: accessData, error: accessError }] = await Promise.all([
+          supabase.from("profiles").select("id,email,full_name,role,department,approval_status,active,avatar_path").eq("id", user.id).single(),
+          supabase.rpc("get_my_access_context")
+        ]);
+        if (error?.code === "42703" || error?.code === "PGRST204") {
+          const fallback = await supabase.from("profiles").select("id,email,full_name,role,department,approval_status,active").eq("id", user.id).single();
+          profile = fallback.data;
+          error = fallback.error;
         }
+        if (isTransientServiceError(error) || isTransientServiceError(accessError)) return retry(attempt);
+        if (error || !profile || profile.approval_status !== "approved" || !profile.active) {
+          await supabase.auth.signOut();
+          router.replace(`/login/${portal}?error=access`);
+          return;
+        }
+        if (accessError || !accessData) {
+          router.replace(`/login/${portal}?error=permissions`);
+          return;
+        }
+        const resolvedAccess = accessData;
+        const workspace = workspaceForAccess(resolvedAccess);
+        if (portal !== workspace) {
+          router.replace(`/${workspace}`);
+          return;
+        }
+        profile.avatarUrl = null;
+        saveIdentity({ role: profile.role, email: profile.email, name: profile.full_name, id: profile.id, access: resolvedAccess });
+        if (active) setAccess({ ...resolvedAccess, profile });
+        if (profile.avatar_path) {
+          const { data: avatar } = await supabase.storage.from("profile-images").createSignedUrl(profile.avatar_path, 60 * 60);
+          if (active && avatar?.signedUrl) {
+            setAccess(current => current ? { ...current, profile: { ...current.profile, avatarUrl: avatar.signedUrl } } : current);
+          }
+        }
+      } catch (error) {
+        if (isTransientServiceError(error)) return retry(attempt);
+        console.error("Workspace access verification failed.", error);
+        retry(attempt);
       }
     }
     verify();
     const listener = supabase?.auth.onAuthStateChange((_event, session) => {
       if (!session) router.replace(`/login/${portal}`);
     });
-    return () => { active = false; listener?.data?.subscription?.unsubscribe(); };
+    return () => {
+      active = false;
+      clearTimeout(retryTimer);
+      listener?.data?.subscription?.unsubscribe();
+    };
   }, [portal, router]);
 
   return access;

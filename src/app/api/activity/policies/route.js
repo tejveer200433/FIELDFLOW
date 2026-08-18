@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request) {
   try {
     const session = await requireActivitySession(request);
-    enforceActivityRateLimit(request, "policy-read", session.profile.id, { limit: 120, windowMs: 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "policy-read", { limit: 120, windowMs: 60 * 1000 });
     const policy = await getActivePolicy(session.client);
     const acknowledgement = await getAcknowledgement(session.client, session.profile.id, policy);
     return activitySuccess({
@@ -26,7 +26,7 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const session = await requireActivitySession(request, [ACTIVITY_PERMISSIONS.managePolicies]);
-    enforceActivityRateLimit(request, "policy-update", session.profile.id, { limit: 10, windowMs: 60 * 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "policy-update", { limit: 10, windowMs: 60 * 60 * 1000 });
     const body = parsePolicyAdministration(await readActivityJson(request));
     const { data, error } = await session.client.rpc("activity_activate_policy", {
       p_tracking_enabled: body.trackingEnabled,

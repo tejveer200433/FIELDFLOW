@@ -17,7 +17,7 @@ export async function POST(request) {
   let session;
   try {
     session = await requireActivitySession(request, [ACTIVITY_PERMISSIONS.viewSelf]);
-    enforceActivityRateLimit(request, "sample-ingest", session.profile.id, { limit: 120, windowMs: 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "sample-ingest", { limit: 120, windowMs: 60 * 1000 });
     const body = parseSampleBatch(await readActivityJson(request));
     const [device, trackingSession, policy] = await Promise.all([
       requireOwnedDevice(session.client, session.profile.id, body.deviceId, { active: true }),

@@ -394,6 +394,11 @@ export function parseScreenshotSignedUrlQuery(searchParams) {
   return { path };
 }
 
+export function parseAuditFilters(searchParams) {
+  const query = queryObject(searchParams, ["limit", "cursor"]);
+  return pagination(query, 100);
+}
+
 export function parseScreenshotDeletion(value) {
   const body = object(value, ["screenshotIds"]);
   if (!Array.isArray(body.screenshotIds) || body.screenshotIds.length < 1 || body.screenshotIds.length > 100) {

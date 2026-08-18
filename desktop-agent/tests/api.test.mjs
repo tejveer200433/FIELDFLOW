@@ -121,7 +121,7 @@ test("API refreshes and retries once when the server rejects an expired token", 
   assert.deepEqual(authorizations, ["Bearer stale-secret", "Bearer fresh-secret"]);
 });
 
-test("API asks for sign-in when a rejected token cannot be refreshed", async () => {
+test("API delays and retains the login when a rejected token cannot be refreshed", async () => {
   const api = createActivityApi({
     baseUrl: "https://fieldflow.example",
     supabase: supabaseWith(
@@ -137,9 +137,9 @@ test("API asks for sign-in when a rejected token cannot be refreshed", async () 
   await assert.rejects(
     api.getPolicy(),
     error => {
-      assert.equal(error.code, "AUTHENTICATION_REQUIRED");
-      assert.equal(error.status, 401);
-      assert.equal(error.message, "Your FieldFlow session expired. Sign out and sign in again.");
+      assert.equal(error.code, "AUTHENTICATION_DELAYED");
+      assert.equal(error.status, 0);
+      assert.equal(error.message, "FieldFlow could not rotate the saved session yet. The login has been retained and recovery will retry automatically.");
       assert.equal(error.message.includes("stale-secret"), false);
       return true;
     }

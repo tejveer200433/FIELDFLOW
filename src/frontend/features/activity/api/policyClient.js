@@ -2,7 +2,7 @@
 
 import { authenticatedFetch } from "@/frontend/lib/apiClient";
 import { ActivityApiError, getActivePolicy } from "@/frontend/features/activity/api/client";
-import { getWorkforceDevices, UnsupportedActivityReadError } from "@/frontend/features/activity/api/adminClient";
+import { getMonitoringAuditLog, getWorkforceDevices, UnsupportedActivityReadError } from "@/frontend/features/activity/api/adminClient";
 
 async function policyRequest(path, init = {}) {
   const response = await authenticatedFetch(`/api/activity${path}`, {
@@ -81,6 +81,4 @@ export function getAcknowledgementSummary() {
   return Promise.reject(new UnsupportedActivityReadError("Phase 2 does not expose an acknowledgement-summary endpoint."));
 }
 
-export function getPolicyAuditLog() {
-  return Promise.reject(new UnsupportedActivityReadError("Phase 2 does not expose an activity audit-log read endpoint."));
-}
+export const getPolicyAuditLog = getMonitoringAuditLog;

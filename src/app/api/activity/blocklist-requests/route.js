@@ -14,7 +14,7 @@ export async function GET(request) {
       ACTIVITY_PERMISSIONS.viewSelf,
       ACTIVITY_PERMISSIONS.managePolicies
     ]);
-    enforceActivityRateLimit(request, "blocklist-requests-read", session.profile.id, { limit: 120, windowMs: 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "blocklist-requests-read", { limit: 120, windowMs: 60 * 1000 });
     const canReview = activityCan(session.access, ACTIVITY_PERMISSIONS.managePolicies);
     let query = session.client.from("website_block_override_requests")
       .select(requestSelect).order("created_at", { ascending: false }).limit(200);
@@ -30,7 +30,7 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const session = await requireActivitySession(request, [ACTIVITY_PERMISSIONS.viewSelf]);
-    enforceActivityRateLimit(request, "blocklist-requests-create", session.profile.id, { limit: 10, windowMs: 60 * 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "blocklist-requests-create", { limit: 10, windowMs: 60 * 60 * 1000 });
     const body = parseBlocklistOverrideRequest(await readActivityJson(request));
     const { data, error } = await session.client.from("website_block_override_requests")
       .insert({
@@ -51,7 +51,7 @@ export async function POST(request) {
 export async function PATCH(request) {
   try {
     const session = await requireActivitySession(request, [ACTIVITY_PERMISSIONS.managePolicies]);
-    enforceActivityRateLimit(request, "blocklist-requests-review", session.profile.id, { limit: 60, windowMs: 60 * 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "blocklist-requests-review", { limit: 60, windowMs: 60 * 60 * 1000 });
     const body = parseBlocklistOverrideReview(await readActivityJson(request));
     const { data, error } = await session.client.rpc("activity_review_blocklist_override", {
       p_request_id: body.id,

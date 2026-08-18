@@ -29,7 +29,7 @@ Create `desktop-agent/.env.local` from `.env.example`:
 VITE_FIELDFLOW_API_URL=http://localhost:3000
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-public-anon-key
-VITE_AGENT_VERSION=0.4.8
+VITE_AGENT_VERSION=0.4.9
 VITE_DEBUG_LOGGING=false
 ```
 

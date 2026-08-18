@@ -172,7 +172,7 @@ export function throwActivityDatabaseError(error) {
   if (
     error?.code === "PGRST202"
     || (
-      /activity_(ingest_samples|refresh_daily_summaries)/i.test(message)
+      /activity_(ingest_samples|refresh_daily_summaries|consume_rate_limit)/i.test(message)
       && /(schema cache|could not find|does not exist)/i.test(message)
     )
   ) {

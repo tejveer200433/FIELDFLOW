@@ -20,7 +20,7 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const session = await requireActivitySession(request, [ACTIVITY_PERMISSIONS.viewSelf]);
-    enforceActivityRateLimit(request, "web-access-extension-health", session.profile.id, { limit: 12, windowMs: 60000 });
+    await enforceActivityRateLimit(session.client, "web-access-extension-health", { limit: 12, windowMs: 60000 });
     const body = await readActivityJson(request);
     const browserName = String(body.browserName || "").trim().toLowerCase();
     const extensionId = String(body.extensionId || "").trim();

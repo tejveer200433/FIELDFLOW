@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request) {
   try {
     const session = await requireActivitySession(request, [ACTIVITY_PERMISSIONS.viewSelf]);
-    enforceActivityRateLimit(request, "coding-ingest", session.profile.id, { limit: 120, windowMs: 60000 });
+    await enforceActivityRateLimit(session.client, "coding-ingest", { limit: 120, windowMs: 60000 });
     const body = parseCodingSampleBatch(await readActivityJson(request));
     const trackingSession = await requireOwnedSession(
       session.client,

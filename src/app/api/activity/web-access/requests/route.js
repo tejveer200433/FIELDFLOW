@@ -10,7 +10,7 @@ const map = row => ({ id: row.id, employeeId: row.employee_id, deviceId: row.dev
 export async function GET(request) {
   try {
     const session = await requireActivitySession(request, [ACTIVITY_PERMISSIONS.viewSelf, ACTIVITY_PERMISSIONS.viewTeam, ACTIVITY_PERMISSIONS.viewAll, ACTIVITY_PERMISSIONS.managePolicies, ACTIVITY_PERMISSIONS.reviewWebAccess]);
-    enforceActivityRateLimit(request, "web-access-requests-read", session.profile.id, { limit: 120, windowMs: 60000 });
+    await enforceActivityRateLimit(session.client, "web-access-requests-read", { limit: 120, windowMs: 60000 });
     const canReview = session.access.isOwner || activityCan(session.access, ACTIVITY_PERMISSIONS.managePolicies) || activityCan(session.access, ACTIVITY_PERMISSIONS.viewTeam) || session.access.permissions.includes("activity.web_access.review");
     let query = session.client.from("web_access_requests").select(select).order("created_at", { ascending: false }).limit(250);
     if (!canReview) query = query.eq("employee_id", session.profile.id);
@@ -27,7 +27,7 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const session = await requireActivitySession(request, [ACTIVITY_PERMISSIONS.viewSelf]);
-    enforceActivityRateLimit(request, "web-access-request-create", session.profile.id, { limit: 10, windowMs: 3600000 });
+    await enforceActivityRateLimit(session.client, "web-access-request-create", { limit: 10, windowMs: 3600000 });
     const body = parseWebAccessRequest(await readActivityJson(request));
     const { data, error } = await session.client.from("web_access_requests").insert({ employee_id: session.profile.id, device_id: body.deviceId, resource_type: body.resourceType, resource_key: body.resourceKey, reason: body.reason, project_id: body.projectId, task_id: body.taskId, requested_minutes: body.requestedMinutes, requested_scope: body.requestedScope }).select(select).single();
     if (error) throw error;
@@ -38,7 +38,7 @@ export async function POST(request) {
 export async function PATCH(request) {
   try {
     const session = await requireActivitySession(request, [ACTIVITY_PERMISSIONS.viewTeam, ACTIVITY_PERMISSIONS.viewAll, ACTIVITY_PERMISSIONS.managePolicies, ACTIVITY_PERMISSIONS.reviewWebAccess]);
-    enforceActivityRateLimit(request, "web-access-request-review", session.profile.id, { limit: 120, windowMs: 3600000 });
+    await enforceActivityRateLimit(session.client, "web-access-request-review", { limit: 120, windowMs: 3600000 });
     const body = parseWebAccessReview(await readActivityJson(request));
     const { data, error } = await session.client.rpc("web_access_review_request", { p_request_id: body.id, p_decision: body.decision, p_granted_minutes: body.grantedMinutes, p_approval_scope: body.approvalScope, p_comment: body.comment });
     if (error) throw error;

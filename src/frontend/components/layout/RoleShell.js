@@ -28,7 +28,8 @@ const nav = {
     ["activity", "Team Activity", Activity, ["activity.view_team", "activity.view_all"]]
   ],
   admin: [
-    ...managementNav,
+    ["", "Live Operations", Map, [PERMISSIONS.dashboardView]],
+    ...managementNav.slice(1),
     ["attendance-locations", "Attendance locations", Map, [PERMISSIONS.settingsManage]],
     ["settings", "Roles & permissions", Settings, [PERMISSIONS.rolesManage, PERMISSIONS.teamsManage]],
     ["activity", "Workforce Activity", Activity, ["activity.view_all"]],
@@ -40,12 +41,13 @@ export default function RoleShell({ role, children }) {
   const pathname = usePathname();
   const router = useRouter();
   const access = useAuthGuard(role);
-  const { items: notifications, unreadCount, markAllRead } = useNotifications({ enabled: Boolean(access) });
+  const { items: notifications, unreadCount, markAllRead, error: notificationError, refreshing: notificationsRefreshing, refresh: refreshNotifications } = useNotifications({ enabled: Boolean(access) });
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [panel, setPanel] = useState("");
   const [query, setQuery] = useState("");
   const isManagerDashboard = role === "manager" && pathname === "/manager";
+  const isAdminDashboard = role === "admin" && pathname === "/admin";
 
   if (!access) return <WorkspaceLoadingShell />;
 
@@ -98,13 +100,15 @@ export default function RoleShell({ role, children }) {
     <div className="min-w-0 flex-1 bg-[#f8fafc] lg:rounded-r-2xl lg:shadow-[0_10px_35px_rgba(15,23,42,0.08)]">
       <header className={`sticky top-0 z-[700] h-16 items-center gap-4 border-b border-slate-200 bg-white/95 px-5 backdrop-blur sm:px-8 ${isManagerDashboard ? "flex lg:hidden" : "flex"}`}>
         <button aria-label="Open menu" onClick={() => setMobileOpen(true)} className="icon-button lg:hidden"><Menu className="h-5 w-5" /></button>
-        <form onSubmit={search} className="relative w-full max-w-xl"><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} className="input py-3 pl-12" placeholder="Search users, tasks, reports…" aria-label="Search workspace" /></form>
+        {isAdminDashboard && <div className="hidden min-w-[230px] xl:block"><h1 className="text-xl font-black tracking-tight text-slate-950">Live Operations</h1><p className="mt-0.5 text-[11px] text-slate-500">Real-time workforce and site coverage</p></div>}
+        <form onSubmit={search} className={`relative w-full ${isAdminDashboard ? "max-w-sm" : "max-w-xl"}`}><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} className="input py-3 pl-12" placeholder={isAdminDashboard ? "Search people, jobs, sites…" : "Search users, tasks, reports…"} aria-label="Search workspace" /></form>
         <div className="relative ml-auto flex items-center gap-2">
+          {isAdminDashboard && <><span className="hidden h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 2xl:inline-flex"><Users className="h-4 w-4" />All teams</span><span className="hidden h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 xl:inline-flex"><Clock3 className="h-4 w-4" />Today</span></>}
           <button aria-label="Notifications" onClick={() => setPanel(panel === "notifications" ? "" : "notifications")} className="icon-button">
             <Bell className="h-5 w-5 text-amber-500" />
             {unreadCount > 0 && <span className="absolute right-1 top-1 grid h-4 min-w-[1rem] place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white">{unreadCount > 9 ? "9+" : unreadCount}</span>}
           </button>
-          <button aria-label="Help" onClick={() => setPanel(panel === "help" ? "" : "help")} className="icon-button"><CircleHelp className="h-5 w-5" /></button>
+          {!isAdminDashboard && <button aria-label="Help" onClick={() => setPanel(panel === "help" ? "" : "help")} className="icon-button"><CircleHelp className="h-5 w-5" /></button>}
           <button onClick={() => setPanel(panel === "profile" ? "" : "profile")} className="ml-1 flex items-center gap-3 rounded-full border border-slate-200 p-1.5 pr-4 text-left"><span className="grid h-10 w-10 place-items-center rounded-full bg-blue-100 font-bold text-blue-700">{displayName.charAt(0).toUpperCase()}</span><span className="hidden sm:block"><strong className="block text-sm">{displayName}</strong><small className="block max-w-36 truncate uppercase tracking-wide text-slate-500">{dynamicRoleName}</small></span></button>
           {panel && <div className="absolute right-0 top-14 w-80 rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
             {panel === "notifications" && <>
@@ -112,6 +116,7 @@ export default function RoleShell({ role, children }) {
                 <h3 className="font-bold">Notifications</h3>
                 {unreadCount > 0 && <button onClick={markAllRead} className="text-xs font-semibold text-blue-600 hover:underline">Mark all read</button>}
               </div>
+              {notificationError && <div role="alert" className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-800"><span>{notificationError}</span><button type="button" disabled={notificationsRefreshing} onClick={refreshNotifications} className="shrink-0 font-bold underline">Retry</button></div>}
               <div className="mt-3 max-h-96 space-y-2 overflow-y-auto">
                 {notifications.length === 0 && <p className="rounded-xl bg-blue-50 p-3 text-sm text-slate-500">Your permitted work queues update automatically.</p>}
                 {notifications.map(item => <div key={item.id} className={`rounded-xl border p-3 text-sm ${item.read ? "border-slate-100 bg-white" : "border-blue-100 bg-blue-50"}`}>
@@ -126,7 +131,7 @@ export default function RoleShell({ role, children }) {
           </div>}
         </div>
       </header>
-      <main className={`mx-auto max-w-[1600px] ${isManagerDashboard ? "p-4 sm:p-5 lg:p-6" : "p-5 sm:p-8 lg:p-10"}`}>{children}</main>
+      <main className={`mx-auto max-w-[1600px] ${isManagerDashboard || isAdminDashboard ? "p-4 sm:p-5 lg:p-6" : "p-5 sm:p-8 lg:p-10"}`}>{children}</main>
     </div>
   </div></AccessProvider>;
 }

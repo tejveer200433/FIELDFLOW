@@ -1,6 +1,7 @@
 import { ApiError, apiFailure, requireAnyPermission, requirePermission, resolveUserScope } from "@/backend/supabase/supabaseServer";
 
 export const dynamic = "force-dynamic";
+const LIVE_WINDOW_MS = 2 * 60 * 1000;
 const locationSelect = "*,profiles!employee_locations_employee_id_fkey(full_name)";
 const map = row => ({ employeeId: row.employee_id, name: row.profiles?.full_name || "Employee", latitude: row.latitude, longitude: row.longitude, accuracy: row.accuracy, updatedAt: row.updated_at, sharing: row.sharing });
 
@@ -8,7 +9,8 @@ export async function GET(request) {
   try {
     const session = await requireAnyPermission(request, ["locations.view_team", "locations.view_all"]);
     const scope = await resolveUserScope(session, { team: "locations.view_team", all: "locations.view_all" });
-    let query = session.client.from("employee_locations").select(locationSelect).eq("sharing", true).order("updated_at", { ascending: false });
+    const liveSince = new Date(Date.now() - LIVE_WINDOW_MS).toISOString();
+    let query = session.client.from("employee_locations").select(locationSelect).eq("sharing", true).gte("updated_at", liveSince).order("updated_at", { ascending: false });
     if (scope.type !== "all") query = query.in("employee_id", scope.userIds);
     const { data, error } = await query;
     if (error) throw error;
@@ -27,6 +29,9 @@ export async function POST(request) {
       if (error) throw error;
       return Response.json({ data: map(data) });
     }
+    const { data: openShift, error: shiftError } = await client.from("attendance_shifts").select("id").eq("employee_id", profile.id).is("check_out_at", null).limit(1).maybeSingle();
+    if (shiftError) throw shiftError;
+    if (!openShift) throw new ApiError("Live location sharing requires an active attendance shift.", 409);
     const latitude = Number(body.latitude);
     const longitude = Number(body.longitude);
     const accuracy = Number(body.accuracy);

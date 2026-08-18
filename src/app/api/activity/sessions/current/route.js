@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request) {
   try {
     const session = await requireActivitySession(request, [ACTIVITY_PERMISSIONS.viewSelf]);
-    enforceActivityRateLimit(request, "session-current", session.profile.id, { limit: 120, windowMs: 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "session-current", { limit: 120, windowMs: 60 * 1000 });
     const [sessionResult, policy] = await Promise.all([
       session.client.from("tracking_sessions")
         .select("id,employee_id,device_id,project_id,task_id,started_at,ended_at,status,start_source,end_source")

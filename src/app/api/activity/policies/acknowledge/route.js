@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request) {
   try {
     const session = await requireActivitySession(request, [ACTIVITY_PERMISSIONS.viewSelf]);
-    enforceActivityRateLimit(request, "policy-acknowledge", session.profile.id, { limit: 10, windowMs: 60 * 60 * 1000 });
+    await enforceActivityRateLimit(session.client, "policy-acknowledge", { limit: 10, windowMs: 60 * 60 * 1000 });
     const body = parsePolicyAcknowledgement(await readActivityJson(request));
     const { data, error } = await session.client.rpc("activity_acknowledge_policy", {
       p_policy_id: body.policyId,

@@ -29,6 +29,7 @@ export default defineConfig([
     "build/**",
     "node_modules/**",
     "coverage/**",
+    "desktop-agent/dist/**",
     "desktop-agent/src-tauri/target/**"
   ])
 ]);
