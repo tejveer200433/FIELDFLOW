@@ -17,6 +17,25 @@ export function localDateKey(value = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+export function startOfLocalWeek(value = new Date()) {
+  const date = value instanceof Date ? new Date(value) : new Date(value);
+  const weekday = date.getDay();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() - (weekday === 0 ? 6 : weekday - 1));
+  return date;
+}
+
+export function plannedShiftSeconds(plan, fallbackSeconds = 8 * 60 * 60) {
+  if (!plan?.startTime || !plan?.endTime) return fallbackSeconds;
+  const [startHour, startMinute] = plan.startTime.split(":").map(Number);
+  const [endHour, endMinute] = plan.endTime.split(":").map(Number);
+  if (![startHour, startMinute, endHour, endMinute].every(Number.isFinite)) return fallbackSeconds;
+  let minutes = (endHour * 60 + endMinute) - (startHour * 60 + startMinute);
+  if (minutes <= 0) minutes += 24 * 60;
+  minutes -= Math.max(0, Number(plan.unpaidBreakMinutes) || 0);
+  return Math.max(60 * 60, minutes * 60);
+}
+
 export function workedDurationSeconds(record, breaks = [], now = Date.now()) {
   if (!record) return 0;
   const isClosed = Boolean(record.checkOutAt || record.checkOut);
@@ -59,5 +78,32 @@ export function dashboardTaskStats(tasks, compare = new Date()) {
     completedToday,
     active,
     completion: today.length ? Math.round((completedToday.length / today.length) * 100) : null
+  };
+}
+
+export function weeklyWorkStats(attendance, breaks = [], compare = new Date(), now = Date.now()) {
+  const weekStart = startOfLocalWeek(compare);
+  const days = Array.from({ length: 5 }, (_, index) => {
+    const date = new Date(weekStart);
+    date.setDate(weekStart.getDate() + index);
+    const records = attendance.filter(item => sameLocalDay(item.checkInAt || item.date, date));
+    const seconds = records.reduce((total, record) => total + workedDurationSeconds(record, breaks, now), 0);
+    return {
+      key: localDateKey(date),
+      label: date.toLocaleDateString("en", { weekday: "short" }),
+      seconds,
+      future: date > compare
+    };
+  });
+  const workedDays = days.filter(day => day.seconds > 0);
+  const relevantRecords = attendance.filter(item => {
+    const date = new Date(item.checkInAt || item.date);
+    return date >= weekStart && date <= compare;
+  });
+  const onTimeRecords = relevantRecords.filter(item => item.status !== "Late");
+  return {
+    days,
+    averageSeconds: workedDays.length ? Math.round(workedDays.reduce((total, day) => total + day.seconds, 0) / workedDays.length) : 0,
+    attendanceRate: relevantRecords.length ? Math.round((onTimeRecords.length / relevantRecords.length) * 100) : null
   };
 }

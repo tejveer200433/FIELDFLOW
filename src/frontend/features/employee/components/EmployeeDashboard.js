@@ -25,7 +25,7 @@ import { useAccess } from "@/frontend/contexts/AccessContext";
 import { useEmployeeTracking } from "@/frontend/features/activity/context/EmployeeTrackingContext";
 import { apiJson } from "@/frontend/lib/apiClient";
 import { hasPermission, PERMISSIONS } from "@/shared/permissions";
-import { breakDurationSeconds, dashboardTaskStats, localDateKey, sameLocalDay, workedDurationSeconds } from "@/shared/employeeDashboard";
+import { breakDurationSeconds, dashboardTaskStats, localDateKey, plannedShiftSeconds, sameLocalDay, startOfLocalWeek, weeklyWorkStats, workedDurationSeconds } from "@/shared/employeeDashboard";
 import { durationSeconds, formatDuration } from "@/shared/time";
 
 const PRIORITY_ORDER = { High: 0, Urgent: 0, Medium: 1, Low: 2 };
@@ -118,11 +118,15 @@ export default function EmployeeDashboard() {
   const taskStats = dashboardTaskStats(data.tasks, new Date(now));
   const completedTasks = taskStats.completedToday;
   const taskCompletion = taskStats.completion;
-  const progressValue = taskCompletion ?? 0;
-  const progressFirstStop = progressValue * 0.34;
-  const progressSecondStop = progressValue * 0.67;
   const approvedReports = data.reportSummary.approved;
-  const reportApproval = data.reportSummary.totalReports ? Math.round((approvedReports / data.reportSummary.totalReports) * 100) : null;
+  const submittedReports = data.reportSummary.totalReports || 0;
+  const targetSeconds = plannedShiftSeconds(data.plan);
+  const workProgress = Math.min(100, Math.round((workedSeconds / targetSeconds) * 100));
+  const remainingSeconds = Math.max(0, targetSeconds - workedSeconds);
+  const weeklyStats = weeklyWorkStats(data.attendance, data.breaks, new Date(now), now);
+  const weekStart = startOfLocalWeek(new Date(now));
+  const completedThisWeek = data.tasks.filter(task => task.status === "Completed" && task.updatedAt && new Date(task.updatedAt) >= weekStart && new Date(task.updatedAt).getTime() <= now).length;
+  const maxWeeklySeconds = Math.max(targetSeconds, ...weeklyStats.days.map(day => day.seconds));
 
   const focusTasks = useMemo(() => data.tasks.filter(task => task.status !== "Completed").sort((left, right) => {
     const leftOverdue = left.scheduledAt && new Date(left.scheduledAt) < new Date() && !sameLocalDay(left.scheduledAt) ? 0 : 1;
@@ -139,9 +143,22 @@ export default function EmployeeDashboard() {
       if (record.checkInAt) events.push({ id: `in-${record.id}`, time: new Date(record.checkInAt), title: "Checked in", detail: record.shiftName || record.checkInLocation?.geofenceName || "Workday started", current: !record.checkOutAt && !record.checkOut });
       if (record.checkOutAt) events.push({ id: `out-${record.id}`, time: new Date(record.checkOutAt), title: "Checked out", detail: `Worked ${formatDuration(workedDurationSeconds(record, data.breaks))}` });
     });
+    const todayShiftIds = new Set(todayRecords.map(record => record.id));
+    data.breaks.filter(item => todayShiftIds.has(item.shiftId)).forEach(item => {
+      events.push({ id: `break-${item.id}`, time: new Date(item.startedAt), title: "Break started", detail: item.breakType === "paid" ? "Paid break" : "Unpaid break", tone: "amber", current: !item.endedAt });
+      if (item.endedAt) events.push({ id: `resume-${item.id}`, time: new Date(item.endedAt), title: "Work resumed", detail: "Back to your workday", current: Boolean(openAttendance) });
+    });
     data.tasks.filter(task => sameLocalDay(task.scheduledAt)).forEach(task => events.push({ id: `task-${task.id}`, time: new Date(task.scheduledAt), title: task.title, detail: task.status, current: task.status === "In Progress" }));
     return events.sort((left, right) => left.time - right.time);
   })();
+
+  const firstCheckIn = [...todayRecords].filter(record => record.checkInAt).sort((left, right) => new Date(left.checkInAt) - new Date(right.checkInAt))[0];
+  const latestBreak = [...data.breaks].filter(item => todayRecords.some(record => record.id === item.shiftId)).sort((left, right) => new Date(right.startedAt) - new Date(left.startedAt))[0];
+  const progressMilestones = [
+    firstCheckIn && { label: "Check in", time: new Date(firstCheckIn.checkInAt), tone: "blue" },
+    latestBreak && { label: latestBreak.endedAt ? "Break" : "On break", time: new Date(latestBreak.startedAt), tone: "amber" },
+    openAttendance && { label: activeBreak ? "Break in progress" : "Work in progress", time: new Date(now), tone: "blue", now: true }
+  ].filter(Boolean);
 
   const fieldTask = data.tasks.find(task => task.status === "On The Way" && task.address);
   const greetingHour = new Date(now).getHours();
@@ -155,6 +172,15 @@ export default function EmployeeDashboard() {
     : openAttendance
       ? shiftEnded ? "Overtime" : openAttendance.status === "Late" ? "Late" : "Working"
       : data.plan?.weeklyOff ? "Weekly off" : data.plan ? "Not checked in" : "No shift assigned";
+  const progressStatus = workedSeconds >= targetSeconds
+    ? { label: "Goal reached", className: "bg-emerald-50 text-emerald-700 ring-emerald-100" }
+    : activeBreak
+      ? { label: "On break", className: "bg-amber-50 text-amber-700 ring-amber-100" }
+      : openAttendance?.status === "Late"
+        ? { label: "Needs attention", className: "bg-rose-50 text-rose-700 ring-rose-100" }
+        : openAttendance
+          ? { label: "On track", className: "bg-emerald-50 text-emerald-700 ring-emerald-100" }
+          : { label: "Not started", className: "bg-slate-100 text-slate-600 ring-slate-200" };
   const scheduleLabel = data.plan ? `${data.plan.startTime}–${data.plan.endTime}` : "No assigned schedule";
 
   const quickActions = [
@@ -213,13 +239,24 @@ export default function EmployeeDashboard() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-        <SectionHeader eyebrow="" title="Today’s Progress" />
-        <div className="mt-5 flex items-center gap-5">
-          <div className="relative grid h-32 w-32 shrink-0 place-items-center rounded-full" style={{ background: `conic-gradient(#22c55e 0 ${progressFirstStop}%, #f59e0b ${progressFirstStop}% ${progressSecondStop}%, #6d4aff ${progressSecondStop}% ${progressValue}%, #edf0f5 ${progressValue}% 100%)` }}>
-            <div className="grid h-[100px] w-[100px] place-items-center rounded-full bg-white text-center"><div><strong className="block text-3xl font-extrabold text-slate-950">{taskCompletion == null ? "—" : `${taskCompletion}%`}</strong><span className="text-[10px] font-semibold text-slate-400">of today&apos;s tasks</span></div></div>
+      <section className="flex min-h-[270px] flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+        <SectionHeader eyebrow="" title="Today’s Progress" action={<span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-extrabold ring-1 ring-inset ${progressStatus.className}`}><span className="h-1.5 w-1.5 rounded-full bg-current" />{progressStatus.label}</span>} />
+        <div className="mt-5 grid gap-5 sm:grid-cols-[150px_1fr] sm:items-center">
+          <div className="text-center">
+            <div className="relative mx-auto grid h-36 w-36 place-items-center rounded-full" style={{ background: `conic-gradient(#6d4aff 0%, #3478ee ${workProgress}%, #edf0f5 ${workProgress}% 100%)` }}>
+              <div className="grid h-[112px] w-[112px] place-items-center rounded-full bg-white text-center shadow-[inset_0_0_0_1px_rgba(226,232,240,0.6)]"><div><strong className="block text-2xl font-extrabold tracking-[-0.04em] text-slate-950">{formatDuration(workedSeconds)}</strong><span className="mt-0.5 block text-[10px] font-semibold text-slate-400">of {formatDuration(targetSeconds)} goal</span></div></div>
+            </div>
+            <p className="mt-2 text-[10px] font-semibold text-slate-500">{remainingSeconds ? `${formatDuration(remainingSeconds)} remaining` : "Daily goal complete"}</p>
           </div>
-          <dl className="min-w-0 flex-1 space-y-4 text-xs"><div><dt className="text-slate-400">Time worked</dt><dd className="mt-0.5 font-extrabold text-slate-900">{formatDuration(workedSeconds)}</dd></div><div><dt className="text-slate-400">Tasks completed today</dt><dd className="mt-0.5 font-extrabold text-slate-900">{completedTasks.length} / {taskStats.today.length}</dd></div><div><dt className="text-slate-400">Reports approved today</dt><dd className="mt-0.5 font-extrabold text-slate-900">{approvedReports}</dd></div></dl>
+          <dl className="grid gap-3 text-xs">
+            <div className="flex items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-600"><ListChecks className="h-4 w-4" /></span><div><dt className="text-slate-400">Tasks completed</dt><dd className="mt-0.5 font-extrabold text-slate-900">{completedTasks.length} / {taskStats.today.length}</dd></div></div>
+            <div className="flex items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600"><FileText className="h-4 w-4" /></span><div><dt className="text-slate-400">Reports submitted</dt><dd className="mt-0.5 font-extrabold text-slate-900">{submittedReports} / 1 <span className="font-medium text-slate-400">· {approvedReports} approved</span></dd></div></div>
+            <div className="flex items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-50 text-violet-600"><Clock3 className="h-4 w-4" /></span><div><dt className="text-slate-400">Attendance</dt><dd className="mt-0.5 font-extrabold text-slate-900">{openAttendance?.status === "Late" ? "Late" : todayRecords.length ? "On time" : "Not started"}</dd></div></div>
+          </dl>
+        </div>
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          {progressMilestones.length ? <div className="relative grid grid-flow-col auto-cols-fr gap-3 before:absolute before:left-2 before:right-2 before:top-1.5 before:h-px before:bg-slate-200">{progressMilestones.map((milestone, index) => <div key={`${milestone.label}-${index}`} className={`relative z-10 ${index === progressMilestones.length - 1 ? "text-right" : index ? "text-center" : "text-left"}`}><span className={`mb-2 inline-block h-3 w-3 rounded-full border-[3px] border-white ring-1 ${milestone.tone === "amber" ? "bg-amber-500 ring-amber-200" : "bg-blue-600 ring-blue-200"}`} /><strong className="block text-[10px] text-slate-800">{milestone.now ? "Now " : ""}{milestone.time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong><span className="mt-0.5 block text-[9px] text-slate-500">{milestone.label}</span></div>)}</div> : <p className="text-[10px] text-slate-500">Check in to begin your workday timeline.</p>}
+          <button onClick={() => router.push("/employee/attendance")} className="mt-3 inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 hover:text-blue-900">View details <ChevronRight className="h-3 w-3" /></button>
         </div>
       </section>
 
@@ -251,19 +288,29 @@ export default function EmployeeDashboard() {
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
         <SectionHeader eyebrow="" title="Your Day" />
         <ol className="relative mt-5 space-y-4 before:absolute before:bottom-2 before:left-[67px] before:top-2 before:w-px before:bg-slate-200">
-          {timeline.map(event => <li key={event.id} className="relative grid grid-cols-[52px_18px_1fr] gap-2"><time className="pt-0.5 text-xs font-bold text-slate-500">{event.time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time><span className={`relative z-10 mt-1 h-3 w-3 rounded-full border-[3px] border-white ring-2 ${event.current ? "bg-blue-600 ring-blue-200" : "bg-slate-400 ring-slate-100"}`} /><div><strong className="block text-sm text-slate-900">{event.title}</strong><span className="mt-0.5 block text-xs text-slate-500">{event.detail}</span></div></li>)}
+          {timeline.slice(0, 4).map(event => <li key={event.id} className="relative grid grid-cols-[52px_18px_1fr] gap-2"><time className="pt-0.5 text-xs font-bold text-slate-500">{event.time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time><span className={`relative z-10 mt-1 h-3 w-3 rounded-full border-[3px] border-white ring-2 ${event.tone === "amber" ? "bg-amber-500 ring-amber-200" : event.current ? "bg-blue-600 ring-blue-200" : "bg-slate-400 ring-slate-100"}`} /><div><strong className="block text-sm text-slate-900">{event.title}</strong><span className="mt-0.5 block text-xs text-slate-500">{event.detail}</span></div></li>)}
           {!timeline.length && <li className="rounded-2xl bg-slate-50 p-5 text-center"><CalendarDays className="mx-auto h-7 w-7 text-slate-400" /><p className="mt-2 font-bold text-slate-800">Your timeline is clear</p><p className="mt-1 text-xs text-slate-500">Today’s attendance and scheduled tasks will appear here.</p></li>}
         </ol>
+        {timeline.length > 0 && <button onClick={() => router.push("/employee/activity")} className="mt-5 inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 hover:text-blue-900">View full timeline <ChevronRight className="h-3 w-3" /></button>}
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.04)] lg:col-span-2 xl:col-span-1">
-        <SectionHeader eyebrow="" title="Your Performance" />
-        <div className="mt-4 text-center"><div className="mx-auto grid h-28 w-28 place-items-center rounded-full border-[9px] border-emerald-400 border-b-slate-100"><div><strong className="block text-3xl font-extrabold text-slate-950">{taskCompletion == null ? "—" : `${taskCompletion}%`}</strong><span className="text-[10px] font-bold text-emerald-600">{taskCompletion == null ? "No tasks today" : taskCompletion >= 80 ? "Excellent" : "In progress"}</span></div></div></div>
-        <dl className="mt-5 space-y-4 text-xs">
-          <div className="grid grid-cols-[110px_1fr_38px] items-center gap-2"><dt className="flex items-center gap-2 text-slate-600"><Clock3 className="h-4 w-4 text-blue-500" />Time today</dt><dd className="h-1.5 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400" style={{ width: `${Math.min(100, Math.round(workedSeconds / 288))}%` }} /></dd><span className="text-right font-bold text-slate-800">{formatDuration(workedSeconds)}</span></div>
-          <div className="grid grid-cols-[110px_1fr_38px] items-center gap-2"><dt className="flex items-center gap-2 text-slate-600"><Target className="h-4 w-4 text-emerald-500" />Tasks</dt><dd className="h-1.5 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-emerald-500" style={{ width: `${taskCompletion ?? 0}%` }} /></dd><span className="text-right font-bold text-slate-800">{taskCompletion == null ? "—" : `${taskCompletion}%`}</span></div>
-          <div className="grid grid-cols-[110px_1fr_38px] items-center gap-2"><dt className="flex items-center gap-2 text-slate-600"><FileText className="h-4 w-4 text-violet-500" />Reports</dt><dd className="h-1.5 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-violet-500" style={{ width: `${reportApproval ?? 0}%` }} /></dd><span className="text-right font-bold text-slate-800">{reportApproval == null ? "—" : `${reportApproval}%`}</span></div>
-        </dl>
+      <section className="flex min-h-[270px] flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.04)] lg:col-span-2 xl:col-span-1">
+        <SectionHeader eyebrow="" title="Weekly Performance" />
+        <div className="mt-5 grid flex-1 grid-cols-[minmax(0,1fr)_105px] gap-5">
+          <div className="flex h-40 items-end justify-between gap-2 border-b border-slate-100 px-1 pb-6">
+            {weeklyStats.days.map(day => {
+              const isToday = day.key === localDateKey(new Date(now));
+              const barHeight = day.seconds ? Math.max(10, Math.round((day.seconds / maxWeeklySeconds) * 100)) : 4;
+              return <div key={day.key} className="relative flex h-full min-w-0 flex-1 items-end justify-center"><div className="absolute inset-x-0 bottom-[-20px] text-center text-[9px] font-bold text-slate-500">{day.label}</div>{day.seconds > 0 && <span className="absolute inset-x-0 text-center text-[8px] font-bold text-slate-500" style={{ bottom: `calc(${barHeight}% + 5px)` }}>{formatDuration(day.seconds)}</span>}<span className={`w-full max-w-6 rounded-t-md transition-all ${isToday ? "bg-gradient-to-t from-blue-600 to-violet-500" : day.future ? "bg-slate-50" : "bg-indigo-100"}`} style={{ height: `${barHeight}%` }} /></div>;
+            })}
+          </div>
+          <dl className="divide-y divide-slate-100 text-xs">
+            <div className="pb-4"><dt className="text-slate-400">Daily average</dt><dd className="mt-1 text-xl font-extrabold tracking-[-0.03em] text-slate-950">{weeklyStats.averageSeconds ? formatDuration(weeklyStats.averageSeconds) : "—"}</dd></div>
+            <div className="py-4"><dt className="flex items-center gap-1.5 text-slate-400"><Target className="h-3.5 w-3.5 text-emerald-500" />Tasks</dt><dd className="mt-1 font-extrabold text-slate-900">{completedThisWeek} completed</dd></div>
+            <div className="pt-4"><dt className="flex items-center gap-1.5 text-slate-400"><CheckCircle2 className="h-3.5 w-3.5 text-cyan-500" />Attendance</dt><dd className="mt-1 font-extrabold text-slate-900">{weeklyStats.attendanceRate == null ? "—" : `${weeklyStats.attendanceRate}% on time`}</dd></div>
+          </dl>
+        </div>
+        <button onClick={() => router.push("/employee/activity")} className="mt-4 inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 hover:text-blue-900">View full report <ChevronRight className="h-3 w-3" /></button>
       </section>
     </div>
 

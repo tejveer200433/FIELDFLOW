@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { breakDurationSeconds, dashboardTaskStats, localDateKey, workedDurationSeconds } from "../src/shared/employeeDashboard.js";
+import { breakDurationSeconds, dashboardTaskStats, localDateKey, plannedShiftSeconds, startOfLocalWeek, weeklyWorkStats, workedDurationSeconds } from "../src/shared/employeeDashboard.js";
 
 test("active breaks pause employee worked time", () => {
   const now = Date.parse("2026-08-20T10:30:00.000Z");
@@ -52,4 +52,23 @@ test("today's completion excludes past, future, and unscheduled tasks", () => {
 
 test("dashboard date keys use the employee's local calendar day", () => {
   assert.equal(localDateKey(new Date(2026, 7, 5, 23, 30)), "2026-08-05");
+});
+
+test("planned shift goals exclude the unpaid break", () => {
+  assert.equal(plannedShiftSeconds({ startTime: "09:00", endTime: "17:30", unpaidBreakMinutes: 30 }), 8 * 60 * 60);
+  assert.equal(plannedShiftSeconds({ startTime: "22:00", endTime: "06:00", unpaidBreakMinutes: 60 }), 7 * 60 * 60);
+});
+
+test("weekly work stats use Monday through Friday and real attendance", () => {
+  const compare = new Date(2026, 7, 21, 12);
+  const monday = startOfLocalWeek(compare);
+  const attendance = [
+    { id: "mon", date: localDateKey(monday), checkInAt: new Date(2026, 7, 17, 9).toISOString(), checkOutAt: new Date(2026, 7, 17, 17).toISOString(), workedMinutes: 480, status: "Present" },
+    { id: "tue", date: "2026-08-18", checkInAt: new Date(2026, 7, 18, 9).toISOString(), checkOutAt: new Date(2026, 7, 18, 17).toISOString(), workedMinutes: 420, status: "Late" }
+  ];
+  const result = weeklyWorkStats(attendance, [], compare, compare.getTime());
+
+  assert.deepEqual(result.days.map(day => day.label), ["Mon", "Tue", "Wed", "Thu", "Fri"]);
+  assert.equal(result.averageSeconds, 450 * 60);
+  assert.equal(result.attendanceRate, 50);
 });

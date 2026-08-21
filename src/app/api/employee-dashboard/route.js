@@ -19,11 +19,17 @@ function sectionError(name, result, errors) {
 }
 
 async function attendanceSection(client, employeeId, day) {
+  const [dayYear, dayMonth, dayDate] = day.split("-").map(Number);
+  const requestedDay = new Date(dayYear, dayMonth - 1, dayDate, 12);
+  const weekdayOffset = requestedDay.getDay() === 0 ? 6 : requestedDay.getDay() - 1;
+  requestedDay.setDate(requestedDay.getDate() - weekdayOffset);
+  const weekStart = `${requestedDay.getFullYear()}-${String(requestedDay.getMonth() + 1).padStart(2, "0")}-${String(requestedDay.getDate()).padStart(2, "0")}`;
   const [attendanceResult, scheduleResult, rosterResult] = await Promise.all([
     client.from("attendance_shifts")
       .select("id,work_date,check_in_at,check_out_at,time_zone,attendance_status,shift_template_id,check_in_location_id,break_minutes,worked_minutes,scheduled_start_at,scheduled_end_at,overtime_minutes,checkout_source")
       .eq("employee_id", employeeId)
-      .or(`work_date.eq.${day},check_out_at.is.null`)
+      .or(`work_date.gte.${weekStart},check_out_at.is.null`)
+      .lte("work_date", day)
       .order("check_in_at", { ascending: false })
       .limit(20),
     client.from("employee_attendance_schedules")
