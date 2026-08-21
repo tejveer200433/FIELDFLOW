@@ -43,7 +43,8 @@ function timesheetCsv(rows, profileById, templateById) {
   const headers = [
     "Employee", "Work date", "Shift", "Scheduled start", "Scheduled end",
     "Check in", "Check out", "Regular hours", "Overtime hours", "Break hours",
-    "Total worked hours", "Attendance status", "Time zone"
+    "Gross shift hours", "Total worked hours", "Attendance status", "Checkout source",
+    "Offline capture", "Risk score", "Risk flags", "Time zone"
   ];
   const body = rows.map(row => {
     const workedMinutes = Math.max(0, Number(row.worked_minutes) || 0);
@@ -59,8 +60,13 @@ function timesheetCsv(rows, profileById, templateById) {
       hours(Math.max(0, workedMinutes - overtimeMinutes)),
       hours(overtimeMinutes),
       hours(row.break_minutes),
+      hours((new Date(row.check_out_at || row.check_in_at) - new Date(row.check_in_at)) / 60000),
       hours(workedMinutes),
       row.attendance_status,
+      row.checkout_source || "manual",
+      row.check_in_offline || row.check_out_offline ? "Yes" : "No",
+      row.risk_score || 0,
+      Array.isArray(row.risk_flags) ? row.risk_flags.join("; ") : "",
       row.time_zone
     ].map(csvCell).join(",");
   });
@@ -106,7 +112,7 @@ export async function GET(request) {
 
     let query = session.client
       .from("attendance_shifts")
-      .select("employee_id,work_date,shift_template_id,scheduled_start_at,scheduled_end_at,check_in_at,check_out_at,break_minutes,worked_minutes,overtime_minutes,attendance_status,time_zone")
+      .select("employee_id,work_date,shift_template_id,scheduled_start_at,scheduled_end_at,check_in_at,check_out_at,break_minutes,worked_minutes,overtime_minutes,attendance_status,checkout_source,check_in_offline,check_out_offline,risk_score,risk_flags,time_zone")
       .gte("work_date", from)
       .lte("work_date", to)
       .order("work_date", { ascending: true })

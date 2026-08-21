@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { enable as enableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
+import { enable as enableAutostart } from "@tauri-apps/plugin-autostart";
 import { clearFieldFlowSession, createFieldFlowAuth, verifyEmployeeAccess } from "./lib/auth";
 import { createActivityApi } from "./lib/api";
 import { createSessionManager } from "./lib/sessionManager";
@@ -25,7 +25,7 @@ function agentLog(event, level = "info") {
   return invoke("agent_log", { event, level, debugEnabled: config.debug }).catch(() => {});
 }
 
-function Login({ supabase, onSignedIn }) {
+function Login({ supabase, onSignedIn, notice = "" }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -58,7 +58,7 @@ function Login({ supabase, onSignedIn }) {
         <form onSubmit={submit}>
           <label>Email<input type="email" value={email} onChange={event => setEmail(event.target.value)} required /></label>
           <label>Password<input type="password" value={password} onChange={event => setPassword(event.target.value)} required /></label>
-          {error && <p className="error" role="alert">{error}</p>}
+          {(error || notice) && <p className="error" role="alert">{error || notice}</p>}
           <button disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
         </form>
         <p className="privacy-note">Your session tokens are stored in Windows Credential Manager, never in SQLite or browser local storage.</p>
@@ -162,6 +162,9 @@ export default function App() {
   const lastHeartbeatAttemptAt = useRef(0);
   const trackingDesired = useRef(true);
   const recoveryInFlight = useRef(false);
+  const recoveryRetryAttempt = useRef(0);
+  const recoveryRetryTimer = useRef(null);
+  const recoverAfterSystemActivityRef = useRef(null);
 
   const clearTimers = useCallback(() => {
     timers.current.forEach(window.clearInterval);
@@ -397,7 +400,12 @@ export default function App() {
     } catch (initializationError) {
       await agentLog("login_failed", "warn");
       setError(initializationError.message || "The agent could not initialize.");
-      if (["AUTH_SESSION_MISSING", "AUTH_SESSION_REVOKED"].includes(initializationError?.code)) setAccount(null);
+      if (initializationError?.code === "AUTH_SESSION_REVOKED") {
+        await clearFieldFlowSession(supabase).catch(() => {});
+        setAccount(null);
+        return true;
+      }
+      if (initializationError?.code === "AUTH_SESSION_MISSING") setAccount(null);
       return false;
     } finally {
       setLoading(false);
@@ -408,7 +416,9 @@ export default function App() {
     if (import.meta.env.DEV) return;
     const repairStartup = async () => {
       try {
-        if (!await isAutostartEnabled()) await enableAutostart();
+        // Re-register on every packaged launch. A key can exist but still point at an old,
+        // uninstalled, or development executable; enable() overwrites it with this binary.
+        await enableAutostart();
         await agentLog("autostart_enabled");
       } catch {
         await agentLog("autostart_enable_failed", "warn");
@@ -436,6 +446,10 @@ export default function App() {
       } catch (sessionError) {
         if (cancelled) return;
         if (!sessionError.retryable) {
+          if (sessionError.code === "AUTH_SESSION_REVOKED") {
+            await clearFieldFlowSession(supabase).catch(() => {});
+            setError(sessionError.message);
+          }
           setLoading(false);
           return;
         }
@@ -472,6 +486,7 @@ export default function App() {
     const onlineHandler = () => {
       setOnline(true);
       resumeHeartbeat();
+      recoverAfterSystemActivityRef.current?.();
     };
     const offlineHandler = () => setOnline(false);
     const visibilityHandler = () => {
@@ -619,7 +634,7 @@ export default function App() {
       const connected = navigator.onLine;
       setOnline(connected);
       if (!connected) throw new Error("The network is not ready after system resume.");
-      await sessionManager.getValidSession({ forceRefresh: true });
+      await sessionManager.getValidSession();
       if (!account || !deviceId) {
         await initialize();
       } else {
@@ -634,14 +649,34 @@ export default function App() {
         });
         await performSync();
       }
+      recoveryRetryAttempt.current = 0;
+      window.clearTimeout(recoveryRetryTimer.current);
+      recoveryRetryTimer.current = null;
       await agentLog("system_recovery_succeeded");
     } catch (recoveryError) {
       setError(`Recovery delayed: ${recoveryError?.message || "FieldFlow is temporarily unavailable."}`);
       await agentLog("system_recovery_delayed", "warn");
+      if (recoveryError?.retryable !== false && recoveryError?.status !== 401) {
+        const delay = Math.min(60_000, 5_000 * 2 ** recoveryRetryAttempt.current);
+        recoveryRetryAttempt.current += 1;
+        window.clearTimeout(recoveryRetryTimer.current);
+        recoveryRetryTimer.current = window.setTimeout(
+          () => recoverAfterSystemActivityRef.current?.(),
+          delay
+        );
+      }
     } finally {
       recoveryInFlight.current = false;
     }
   }, [account, api, deviceId, initialize, performSync, policy, reconcileWithServer, sendHeartbeat, sessionManager]);
+
+  useEffect(() => {
+    recoverAfterSystemActivityRef.current = recoverAfterSystemActivity;
+    return () => {
+      recoverAfterSystemActivityRef.current = null;
+      window.clearTimeout(recoveryRetryTimer.current);
+    };
+  }, [recoverAfterSystemActivity]);
 
   useEffect(() => {
     const unlisten = listen("agent-resume-requested", recoverAfterSystemActivity);
@@ -889,7 +924,7 @@ export default function App() {
     return <main className="auth-shell"><section className="card"><h1>Configuration required</h1><p>Add these values to <code>.env.local</code>:</p><pre>{config.missing.join("\n")}</pre></section></main>;
   }
   if (loading) return <main className="auth-shell"><p>Starting FieldFlow Activity Agent…</p></main>;
-  if (!account) return <Login supabase={supabase} onSignedIn={signedIn} />;
+  if (!account) return <Login supabase={supabase} onSignedIn={signedIn} notice={error} />;
   if (policy?.requireAcknowledgement && !policy.acknowledgementStatus?.acknowledged) {
     return <PolicyConsent policy={policy} onAccept={acknowledge} onSignOut={signOut} />;
   }

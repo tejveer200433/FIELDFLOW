@@ -4,6 +4,7 @@ import { formatDuration } from "@/shared/time";
 export const dynamic = "force-dynamic";
 const validLocation = value => value && Number.isFinite(Number(value.latitude)) && Number.isFinite(Number(value.longitude));
 const attendanceSelect = "*";
+const eventIdPattern = /^[a-zA-Z0-9-]{8,80}$/;
 const geofenceMessages = [
   "Attendance is not configured yet. Ask an administrator to add an office or site location.",
   "You are outside the allowed office or site radius. Move closer to your assigned attendance location and try again.",
@@ -17,6 +18,15 @@ const localDay = (value, timeZone) => {
   const get = type => parts.find(part => part.type === type)?.value;
   return `${get("year")}-${get("month")}-${get("day")}`;
 };
+function distanceMeters(left, right) {
+  const radians = value => value * Math.PI / 180;
+  const dLat = radians(right.latitude - left.latitude);
+  const dLng = radians(right.longitude - left.longitude);
+  const lat1 = radians(left.latitude);
+  const lat2 = radians(right.latitude);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 function map(row, context = {}) {
   const profile = context.profileById?.get(row.employee_id);
   const checkInGeofence = context.locationById?.get(row.check_in_location_id);
@@ -26,6 +36,9 @@ function map(row, context = {}) {
   const missedCheckout = !row.check_out_at && row.scheduled_end_at && template
     ? Date.now() > new Date(row.scheduled_end_at).getTime() + template.auto_checkout_after_minutes * 60000
     : false;
+  const autoCheckoutAt = !row.check_out_at && row.scheduled_end_at && template
+    ? new Date(new Date(row.scheduled_end_at).getTime() + template.auto_checkout_after_minutes * 60000).toISOString()
+    : null;
   return {
     id: row.id,
     employeeId: row.employee_id,
@@ -46,9 +59,18 @@ function map(row, context = {}) {
     breakMinutes: row.break_minutes || 0,
     workedMinutes: row.worked_minutes || (row.check_out_at ? Math.floor(seconds / 60) : 0),
     overtimeMinutes: row.overtime_minutes || 0,
+    grossMinutes: Math.floor(seconds / 60),
+    checkoutSource: row.checkout_source || "manual",
+    offlineCapture: Boolean(row.check_in_offline || row.check_out_offline),
+    checkInCapturedAt: row.check_in_captured_at,
+    checkOutCapturedAt: row.check_out_captured_at,
+    riskScore: Number(row.risk_score) || 0,
+    riskFlags: Array.isArray(row.risk_flags) ? row.risk_flags : [],
     weeklyOff: Boolean(row.is_weekly_off),
     holiday: Boolean(row.is_holiday),
     missedCheckout,
+    checkoutWarning: Boolean(!row.check_out_at && row.scheduled_end_at && Date.now() > new Date(row.scheduled_end_at).getTime()),
+    autoCheckoutAt,
     checkInLocation: {
       latitude: row.check_in_lat,
       longitude: row.check_in_lng,
@@ -118,6 +140,13 @@ export async function GET(request) {
     const session = await requireAnyPermission(request, ["attendance.view_self", "attendance.view_team", "attendance.view_all"]);
     const { client } = session;
     const scope = await resolveUserScope(session, { self: "attendance.view_self", team: "attendance.view_team", all: "attendance.view_all" });
+    if (scope.type === "self") {
+      const { error: autoCloseError } = await client.rpc("auto_close_overdue_attendance", { p_employee_id: session.profile.id });
+      if (autoCloseError && !["42883", "PGRST202"].includes(autoCloseError.code)) throw autoCloseError;
+    } else if (session.access.permissions.includes("attendance.approve") || session.access.permissions.includes("attendance.view_all")) {
+      const { error: autoCloseError } = await client.rpc("auto_close_overdue_attendance_scope");
+      if (autoCloseError && !["42883", "PGRST202"].includes(autoCloseError.code)) throw autoCloseError;
+    }
     let query = client.from("attendance_shifts").select(attendanceSelect).order("check_in_at", { ascending: false });
     if (scope.type !== "all") query = query.in("employee_id", scope.userIds);
     const requested = new URL(request.url).searchParams.get("employeeId");
@@ -137,6 +166,45 @@ export async function POST(request) {
     const { client, profile } = await requirePermission(request, "attendance.view_self");
     const body = await request.json();
     if (!["check-in", "check-out"].includes(body.action) || !validLocation(body.location)) throw new ApiError("A valid action and GPS location are required.");
+    const clientEventId = String(body.clientEventId || "");
+    const deviceId = String(body.deviceId || "").slice(0, 120);
+    const capturedAt = new Date(body.capturedAt || Date.now());
+    if (clientEventId && !eventIdPattern.test(clientEventId)) throw new ApiError("Attendance event identifier is invalid.");
+    if (Number.isNaN(capturedAt.getTime())) throw new ApiError("Attendance capture time is invalid.");
+    if (capturedAt.getTime() > Date.now() + 5 * 60 * 1000 || capturedAt.getTime() < Date.now() - 24 * 60 * 60 * 1000) {
+      throw new ApiError("Offline attendance events must be synchronized within 24 hours.");
+    }
+    if (clientEventId) {
+      const eventColumn = body.action === "check-in" ? "check_in_client_event_id" : "check_out_client_event_id";
+      const { data: duplicate, error: duplicateError } = await client.from("attendance_shifts")
+        .select(attendanceSelect).eq("employee_id", profile.id).eq(eventColumn, clientEventId).maybeSingle();
+      if (duplicateError) throw duplicateError;
+      if (duplicate) {
+        const context = await hydrateAttendance(client, [duplicate]);
+        return Response.json({ data: map(duplicate, context), duplicate: true });
+      }
+    }
+    const riskFlags = [];
+    if (body.offline) riskFlags.push("offline_capture");
+    if (Number(body.location.accuracy) > 150) riskFlags.push("low_gps_accuracy");
+    if (body.location.mocked === true) riskFlags.push("mock_location_reported");
+    if (deviceId) {
+      const { data: recentDevice } = await client.from("attendance_shifts")
+        .select("check_in_device_id,check_out_device_id,check_in_at,check_out_at,check_in_lat,check_in_lng,check_out_lat,check_out_lng")
+        .eq("employee_id", profile.id).order("check_in_at", { ascending: false }).limit(1).maybeSingle();
+      const previousDevice = recentDevice?.check_out_device_id || recentDevice?.check_in_device_id;
+      if (previousDevice && previousDevice !== deviceId && Date.now() - new Date(recentDevice.check_in_at).getTime() < 12 * 60 * 60 * 1000) {
+        riskFlags.push("multiple_device");
+      }
+      const previousAt = recentDevice?.check_out_at || recentDevice?.check_in_at;
+      const previousLocation = recentDevice?.check_out_lat != null
+        ? { latitude: Number(recentDevice.check_out_lat), longitude: Number(recentDevice.check_out_lng) }
+        : recentDevice?.check_in_lat != null ? { latitude: Number(recentDevice.check_in_lat), longitude: Number(recentDevice.check_in_lng) } : null;
+      const elapsedHours = previousAt ? (capturedAt.getTime() - new Date(previousAt).getTime()) / 3600000 : 0;
+      if (previousLocation && elapsedHours > 0 && distanceMeters(previousLocation, body.location) / 1000 / elapsedHours > 300) {
+        riskFlags.push("impossible_travel");
+      }
+    }
     let timeZone = String(body.timeZone || "Asia/Kolkata");
     try { new Intl.DateTimeFormat("en-CA", { timeZone }).format(new Date()); } catch { timeZone = "Asia/Kolkata"; }
     const now = new Date();
@@ -146,6 +214,14 @@ export async function POST(request) {
       if (error) {
         await notifyIfOutOfRadius(client, profile, "check-in", error);
         throwRpcError(error);
+      }
+      if (clientEventId) {
+        const { error: metadataError } = await client.rpc("set_attendance_capture_metadata", {
+          p_shift_id: id, p_action: body.action, p_client_event_id: clientEventId,
+          p_device_id: deviceId || null, p_captured_at: capturedAt.toISOString(),
+          p_offline: Boolean(body.offline), p_risk_flags: riskFlags
+        });
+        if (metadataError) throw metadataError;
       }
       const { data, error: readError } = await client.from("attendance_shifts").select(attendanceSelect).eq("id", id).single();
       if (readError) throw readError;
@@ -159,6 +235,14 @@ export async function POST(request) {
     if (error) {
       await notifyIfOutOfRadius(client, profile, "check-out", error);
       throwRpcError(error);
+    }
+    if (clientEventId) {
+      const { error: metadataError } = await client.rpc("set_attendance_capture_metadata", {
+        p_shift_id: id, p_action: body.action, p_client_event_id: clientEventId,
+        p_device_id: deviceId || null, p_captured_at: capturedAt.toISOString(),
+        p_offline: Boolean(body.offline), p_risk_flags: riskFlags
+      });
+      if (metadataError) throw metadataError;
     }
     const { data, error: readError } = await client.from("attendance_shifts").select(attendanceSelect).eq("id", id).single();
     if (readError) throw readError;

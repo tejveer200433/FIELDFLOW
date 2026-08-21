@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CalendarDays, FilePenLine, Plus } from "lucide-react";
 import { apiJson } from "@/frontend/lib/apiClient";
+import { leaveDurationLabel } from "@/frontend/features/attendance/lib/attendanceCalendar";
 
 function Badge({ value }) {
   const style = value === "Approved"
@@ -45,7 +46,7 @@ export default function EmployeeAttendanceRequests() {
     try {
       const values = Object.fromEntries(new FormData(event.currentTarget));
       const body = action === "leave"
-        ? { action, type: values.type, startDate: values.startDate, endDate: values.endDate, reason: values.reason }
+        ? { action, type: values.type, duration: values.duration, startDate: values.startDate, endDate: values.endDate, reason: values.reason }
         : {
             action,
             shiftId: values.shiftId,
@@ -76,6 +77,7 @@ export default function EmployeeAttendanceRequests() {
 
       {form === "leave" ? <form onSubmit={event => submit(event, "leave")} className="mt-5 space-y-4">
         <div><label className="label">Leave type</label><select name="type" className="input"><option>Annual</option><option>Sick</option><option>Casual</option><option>Unpaid</option><option>Other</option></select></div>
+        <div><label className="label">Duration</label><select name="duration" className="input"><option value="full_day">Full day</option><option value="first_half">First half</option><option value="second_half">Second half</option></select><p className="mt-1 text-xs text-slate-500">Half-day leave must use the same From and To date.</p></div>
         <div className="grid grid-cols-2 gap-3"><div><label className="label">From</label><input name="startDate" type="date" required className="input" /></div><div><label className="label">To</label><input name="endDate" type="date" required className="input" /></div></div>
         <div><label className="label">Reason</label><textarea name="reason" required minLength={2} className="input min-h-24" /></div>
         <button disabled={busy} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-50"><Plus className="h-4 w-4" />{busy ? "Submitting..." : "Request leave"}</button>
@@ -94,14 +96,14 @@ export default function EmployeeAttendanceRequests() {
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 px-5 py-4"><h2 className="font-extrabold text-slate-950">My leave requests</h2></div>
         <div className="divide-y">{data.leaves.map(item => <article key={item.id} className="p-5">
-          <div className="flex flex-wrap justify-between gap-3"><div><strong>{item.type} leave</strong><p className="text-sm text-slate-500">{item.startDate} to {item.endDate}</p></div><Badge value={item.status} /></div>
+          <div className="flex flex-wrap justify-between gap-3"><div><strong>{item.type} leave · {leaveDurationLabel(item.duration)}</strong><p className="text-sm text-slate-500">{item.startDate} to {item.endDate}</p></div><Badge value={item.status} /></div>
           <p className="mt-2 text-sm">{item.reason}</p>{item.reviewerComment && <p className="mt-2 rounded-xl bg-blue-50 p-3 text-sm text-blue-700">Reviewer: {item.reviewerComment}</p>}
         </article>)}{!data.leaves.length && <p className="p-8 text-center text-sm text-slate-500">No leave requests yet.</p>}</div>
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 px-5 py-4"><h2 className="font-extrabold text-slate-950">Attendance corrections</h2></div>
-        <div className="divide-y">{data.corrections.map(item => <article key={item.id} className="flex flex-wrap items-start justify-between gap-3 p-5"><div><strong>{new Date(item.createdAt).toLocaleDateString()}</strong><p className="mt-1 text-sm text-slate-500">{item.reason}</p>{item.reviewerComment && <p className="mt-2 text-sm text-blue-700">Reviewer: {item.reviewerComment}</p>}</div><Badge value={item.status} /></article>)}{!data.corrections.length && <p className="p-8 text-center text-sm text-slate-500">No correction requests yet.</p>}</div>
+        <div className="divide-y">{data.corrections.map(item => { const original = shifts.find(shift => shift.id === item.shiftId); return <article key={item.id} className="p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><strong>{new Date(item.createdAt).toLocaleDateString()}</strong><p className="mt-1 text-sm text-slate-500">{item.reason}</p></div><Badge value={item.status} /></div><div className="mt-3 grid gap-2 rounded-xl bg-slate-50 p-3 text-xs sm:grid-cols-2"><div><p className="font-bold text-slate-500">Original</p><p>In: {original?.checkInAt ? new Date(original.checkInAt).toLocaleString() : "—"}</p><p>Out: {original?.checkOutAt ? new Date(original.checkOutAt).toLocaleString() : "—"}</p></div><div><p className="font-bold text-violet-700">Requested</p><p>In: {item.requestedCheckInAt ? new Date(item.requestedCheckInAt).toLocaleString() : "Unchanged"}</p><p>Out: {item.requestedCheckOutAt ? new Date(item.requestedCheckOutAt).toLocaleString() : "Unchanged"}</p></div></div>{item.reviewerComment && <p className="mt-2 text-sm text-blue-700">Reviewer: {item.reviewerComment}</p>}</article>; })}{!data.corrections.length && <p className="p-8 text-center text-sm text-slate-500">No correction requests yet.</p>}</div>
       </section>
 
       {data.holidays.length > 0 && <section className="card p-5"><h2 className="font-bold">Upcoming holidays</h2><div className="mt-3 flex flex-wrap gap-2">{data.holidays.map(item => <span key={item.id} className="rounded-full bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-700">{item.date} · {item.name}</span>)}</div></section>}

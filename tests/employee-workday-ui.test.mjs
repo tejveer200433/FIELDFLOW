@@ -8,18 +8,26 @@ const shellUrl = new URL("../src/frontend/components/layout/EmployeeShell.js", i
 const pageHeaderUrl = new URL("../src/frontend/features/employee/components/EmployeePageHeader.js", import.meta.url);
 const attendanceUrl = new URL("../src/frontend/features/attendance/components/EmployeeAttendance.js", import.meta.url);
 const activityUrl = new URL("../src/frontend/features/activity/components/EmployeeActivityPage.js", import.meta.url);
+const dashboardRouteUrl = new URL("../src/app/api/employee-dashboard/route.js", import.meta.url);
 
-test("employee workday uses authenticated and API-backed data without demo task identities", async () => {
-  const [dashboard, workspace] = await Promise.all([
+test("employee workday uses its scoped summary API without demo task identities", async () => {
+  const [dashboard, workspace, dashboardRoute] = await Promise.all([
     readFile(dashboardUrl, "utf8"),
-    readFile(workspaceUrl, "utf8")
+    readFile(workspaceUrl, "utf8"),
+    readFile(dashboardRouteUrl, "utf8")
   ]);
 
   assert.match(dashboard, /access\?\.profile\?\.full_name/);
-  assert.match(dashboard, /apiJson\("\/api\/attendance"/);
-  assert.match(dashboard, /apiJson\("\/api\/tasks"/);
-  assert.match(dashboard, /apiJson\("\/api\/reports"/);
-  assert.match(dashboard, /apiJson\("\/api\/expenses"/);
+  assert.match(dashboard, /apiJson\(`\/api\/employee-dashboard\?day=/);
+  assert.match(dashboardRoute, /requirePermission\(request, PERMISSIONS\.dashboardView\)/);
+  assert.match(dashboardRoute, /from\("daily_reports"\)/);
+  assert.match(dashboardRoute, /Promise\.allSettled/);
+  assert.match(dashboardRoute, /employee_attendance_schedules/);
+  assert.match(dashboardRoute, /attendance_rosters/);
+  assert.match(dashboard, /Net worked today/);
+  assert.match(dashboard, /Assigned shift/);
+  assert.match(dashboard, /Gross elapsed/);
+  assert.match(dashboard, /Break allowance exceeded/);
   assert.doesNotMatch(workspace, /employeeId:\s*"e-1"/);
   assert.doesNotMatch(workspace, /employee-demo/);
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -25,17 +25,10 @@ import { useAccess } from "@/frontend/contexts/AccessContext";
 import { useEmployeeTracking } from "@/frontend/features/activity/context/EmployeeTrackingContext";
 import { apiJson } from "@/frontend/lib/apiClient";
 import { hasPermission, PERMISSIONS } from "@/shared/permissions";
+import { breakDurationSeconds, dashboardTaskStats, localDateKey, sameLocalDay, workedDurationSeconds } from "@/shared/employeeDashboard";
 import { durationSeconds, formatDuration } from "@/shared/time";
 
 const PRIORITY_ORDER = { High: 0, Urgent: 0, Medium: 1, Low: 2 };
-
-function sameLocalDay(value, compare = new Date()) {
-  if (!value) return false;
-  const date = new Date(value);
-  return date.getFullYear() === compare.getFullYear()
-    && date.getMonth() === compare.getMonth()
-    && date.getDate() === compare.getDate();
-}
 
 function fullTimer(totalSeconds) {
   const seconds = Math.max(0, Math.floor(totalSeconds || 0));
@@ -74,36 +67,39 @@ export default function EmployeeDashboard() {
   const router = useRouter();
   const tracking = useEmployeeTracking();
   const [now, setNow] = useState(Date.now());
-  const [data, setData] = useState({ attendance: [], breaks: [], tasks: [], reports: [], expenses: [] });
+  const [data, setData] = useState({ attendance: [], breaks: [], plan: null, tasks: [], reportSummary: { totalReports: 0, approved: 0 } });
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [sosBusy, setSosBusy] = useState(false);
+  const hasLoaded = useRef(false);
 
   const can = useCallback(permission => hasPermission(access, permission), [access]);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (hasLoaded.current) setRefreshing(true);
     setError("");
-    const requests = [
-      can(PERMISSIONS.attendanceViewSelf)
-        ? Promise.all([apiJson("/api/attendance", { cache: "no-store" }), apiJson("/api/attendance-management", { cache: "no-store" })])
-        : Promise.resolve([{ data: [] }, { data: { breaks: [] } }]),
-      can(PERMISSIONS.tasksViewSelf) ? apiJson("/api/tasks", { cache: "no-store" }) : Promise.resolve({ data: [] }),
-      can(PERMISSIONS.reportsSubmit) ? apiJson("/api/reports", { cache: "no-store" }) : Promise.resolve({ data: [] }),
-      can(PERMISSIONS.expensesSubmit) ? apiJson("/api/expenses", { cache: "no-store" }) : Promise.resolve({ data: [] })
-    ];
-    const [attendanceResult, taskResult, reportResult, expenseResult] = await Promise.allSettled(requests);
-    if (attendanceResult.status === "fulfilled") {
-      const [attendance, management] = attendanceResult.value;
-      setData(current => ({ ...current, attendance: attendance.data || [], breaks: management.data?.breaks || [] }));
+    try {
+      const payload = await apiJson(`/api/employee-dashboard?day=${localDateKey()}`, { cache: "no-store" });
+      setData(current => ({
+        attendance: payload.data.attendance ?? current.attendance,
+        breaks: payload.data.breaks ?? current.breaks,
+        plan: payload.data.plan ?? current.plan,
+        tasks: payload.data.tasks ?? current.tasks,
+        reportSummary: payload.data.reportSummary ?? current.reportSummary
+      }));
+      if (payload.errors?.length) {
+        const labels = { attendance: "Attendance", tasks: "Tasks", reports: "Reports" };
+        setError(`${payload.errors.map(item => labels[item] || item).join(", ")} could not be refreshed. Other dashboard information is up to date.`);
+      }
+    } catch (requestError) {
+      setError(requestError.message || "Your dashboard could not be refreshed. Please try again.");
+    } finally {
+      hasLoaded.current = true;
+      setLoading(false);
+      setRefreshing(false);
     }
-    if (taskResult.status === "fulfilled") setData(current => ({ ...current, tasks: taskResult.value.data || [] }));
-    if (reportResult.status === "fulfilled") setData(current => ({ ...current, reports: reportResult.value.data || [] }));
-    if (expenseResult.status === "fulfilled") setData(current => ({ ...current, expenses: expenseResult.value.data || [] }));
-    const failed = [attendanceResult, taskResult, reportResult, expenseResult].filter(result => result.status === "rejected");
-    if (failed.length) setError("Some workday information could not be loaded. Your existing records are unchanged.");
-    setLoading(false);
-  }, [can]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -115,19 +111,20 @@ export default function EmployeeDashboard() {
   const openAttendance = data.attendance.find(item => !item.checkOutAt && !item.checkOut) || null;
   const activeBreak = data.breaks.find(item => !item.endedAt) || null;
   const todayRecords = data.attendance.filter(item => sameLocalDay(item.checkInAt || item.date));
-  const workedSeconds = todayRecords.reduce((total, record) => total + durationSeconds(record, now), 0);
-  const completedTasks = data.tasks.filter(task => task.status === "Completed");
-  const taskCompletion = data.tasks.length ? Math.round((completedTasks.length / data.tasks.length) * 100) : null;
+  const workedSeconds = todayRecords.reduce((total, record) => total + workedDurationSeconds(record, data.breaks, now), 0);
+  const grossSeconds = todayRecords.reduce((total, record) => total + durationSeconds(record, now), 0);
+  const unpaidBreakSeconds = todayRecords.reduce((total, record) => total + breakDurationSeconds(record, data.breaks, now, "unpaid"), 0);
+  const breakAllowanceSeconds = (data.plan?.unpaidBreakMinutes || 0) * 60;
+  const taskStats = dashboardTaskStats(data.tasks, new Date(now));
+  const completedTasks = taskStats.completedToday;
+  const taskCompletion = taskStats.completion;
   const progressValue = taskCompletion ?? 0;
   const progressFirstStop = progressValue * 0.34;
   const progressSecondStop = progressValue * 0.67;
-  const approvedReports = data.reports.filter(report => report.status === "Approved").length;
-  const reportApproval = data.reports.length ? Math.round((approvedReports / data.reports.length) * 100) : null;
+  const approvedReports = data.reportSummary.approved;
+  const reportApproval = data.reportSummary.totalReports ? Math.round((approvedReports / data.reportSummary.totalReports) * 100) : null;
 
-  const focusTasks = useMemo(() => [...data.tasks].sort((left, right) => {
-    const leftComplete = left.status === "Completed" ? 1 : 0;
-    const rightComplete = right.status === "Completed" ? 1 : 0;
-    if (leftComplete !== rightComplete) return leftComplete - rightComplete;
+  const focusTasks = useMemo(() => data.tasks.filter(task => task.status !== "Completed").sort((left, right) => {
     const leftOverdue = left.scheduledAt && new Date(left.scheduledAt) < new Date() && !sameLocalDay(left.scheduledAt) ? 0 : 1;
     const rightOverdue = right.scheduledAt && new Date(right.scheduledAt) < new Date() && !sameLocalDay(right.scheduledAt) ? 0 : 1;
     if (leftOverdue !== rightOverdue) return leftOverdue - rightOverdue;
@@ -140,7 +137,7 @@ export default function EmployeeDashboard() {
     const events = [];
     todayRecords.forEach(record => {
       if (record.checkInAt) events.push({ id: `in-${record.id}`, time: new Date(record.checkInAt), title: "Checked in", detail: record.shiftName || record.checkInLocation?.geofenceName || "Workday started", current: !record.checkOutAt && !record.checkOut });
-      if (record.checkOutAt) events.push({ id: `out-${record.id}`, time: new Date(record.checkOutAt), title: "Checked out", detail: `Worked ${formatDuration(durationSeconds(record))}` });
+      if (record.checkOutAt) events.push({ id: `out-${record.id}`, time: new Date(record.checkOutAt), title: "Checked out", detail: `Worked ${formatDuration(workedDurationSeconds(record, data.breaks))}` });
     });
     data.tasks.filter(task => sameLocalDay(task.scheduledAt)).forEach(task => events.push({ id: `task-${task.id}`, time: new Date(task.scheduledAt), title: task.title, detail: task.status, current: task.status === "In Progress" }));
     return events.sort((left, right) => left.time - right.time);
@@ -150,16 +147,23 @@ export default function EmployeeDashboard() {
   const greetingHour = new Date(now).getHours();
   const greeting = greetingHour < 12 ? "Good morning" : greetingHour < 17 ? "Good afternoon" : "Good evening";
   const contextualMessage = openAttendance
-    ? activeBreak ? "Take the pause you need—your workday is safely recorded." : focusTasks.length ? `You have ${focusTasks.filter(task => task.status !== "Completed").length} active work item${focusTasks.filter(task => task.status !== "Completed").length === 1 ? "" : "s"} to focus on.` : "Your workday is active and up to date."
+    ? activeBreak ? "Take the pause you need—your workday is safely recorded." : taskStats.active.length ? `You have ${taskStats.active.length} active work item${taskStats.active.length === 1 ? "" : "s"} to focus on.` : "All assigned work is complete."
     : "Start when you are ready and keep your day organised in one place.";
+  const shiftEnded = Boolean(openAttendance?.scheduledEndAt && now > new Date(openAttendance.scheduledEndAt).getTime());
+  const workStatus = activeBreak
+    ? "On break"
+    : openAttendance
+      ? shiftEnded ? "Overtime" : openAttendance.status === "Late" ? "Late" : "Working"
+      : data.plan?.weeklyOff ? "Weekly off" : data.plan ? "Not checked in" : "No shift assigned";
+  const scheduleLabel = data.plan ? `${data.plan.startTime}–${data.plan.endTime}` : "No assigned schedule";
 
   const quickActions = [
-    { label: "My work", description: "Tasks and projects", icon: ListChecks, route: "/employee/tasks", permission: PERMISSIONS.tasksViewSelf },
-    { label: "Attendance", description: openAttendance ? "Manage current shift" : "Start your workday", icon: Clock3, route: "/employee/attendance", permission: PERMISSIONS.attendanceViewSelf },
-    { label: "Daily report", description: "Share your progress", icon: Send, route: "/employee/reports", permission: PERMISSIONS.reportsSubmit },
-    { label: "Add expense", description: "Submit a work cost", icon: WalletCards, route: "/employee/expenses", permission: PERMISSIONS.expensesSubmit },
-    { label: "My activity", description: "Review work sessions", icon: Activity, route: "/employee/activity", permission: "activity.view_self" }
-  ].filter(action => can(action.permission));
+    { label: "My work", description: "Tasks and projects", icon: ListChecks, route: "/employee/tasks", permissions: [PERMISSIONS.projectsViewSelf, PERMISSIONS.tasksViewSelf] },
+    { label: "Attendance", description: openAttendance ? "Manage current shift" : "Start your workday", icon: Clock3, route: "/employee/attendance", permissions: [PERMISSIONS.attendanceViewSelf] },
+    { label: "Daily report", description: "Share your progress", icon: Send, route: "/employee/reports", permissions: [PERMISSIONS.reportsSubmit] },
+    { label: "Add expense", description: "Submit a work cost", icon: WalletCards, route: "/employee/expenses", permissions: [PERMISSIONS.expensesSubmit] },
+    { label: "My activity", description: "Review work sessions", icon: Activity, route: "/employee/activity", permissions: ["activity.view_self"] }
+  ].filter(action => action.permissions.some(can));
 
   async function sendSos() {
     if (!can(PERMISSIONS.sosCreate) || sosBusy) return;
@@ -184,7 +188,7 @@ export default function EmployeeDashboard() {
         <p className="mt-1 text-xs font-medium text-slate-500">{new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date(now))}</p>
         <p className="mt-1 text-xs text-slate-400">{contextualMessage}</p>
       </div>
-      <button onClick={load} className="btn-secondary w-fit" aria-label="Refresh workday"><RefreshCw className="h-4 w-4" />Refresh</button>
+      <button disabled={refreshing} onClick={load} className="btn-secondary w-fit disabled:opacity-60" aria-label="Refresh workday"><RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />{refreshing ? "Refreshing" : "Refresh"}</button>
     </header>
 
     {error && <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between"><span className="flex items-center gap-2"><AlertCircle className="h-5 w-5 shrink-0" />{error}</span><button onClick={load} className="font-bold text-amber-950 underline underline-offset-4">Try again</button></div>}
@@ -194,11 +198,14 @@ export default function EmployeeDashboard() {
         <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-white/15 blur-3xl" />
         <div className="relative flex h-full flex-col">
           <div className="flex items-start justify-between gap-4">
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider"><span className={`h-2 w-2 rounded-full ${activeBreak ? "bg-amber-300" : openAttendance ? "bg-emerald-300" : "bg-slate-300"}`} />{activeBreak ? "On break" : openAttendance ? "Working" : "Not working"}</span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider"><span className={`h-2 w-2 rounded-full ${activeBreak || workStatus === "Late" || workStatus === "Overtime" ? "bg-amber-300" : openAttendance ? "bg-emerald-300" : "bg-slate-300"}`} />{workStatus}</span>
             <TimerReset className="h-5 w-5 text-white/70" />
           </div>
-          <p className="mt-5 font-mono text-4xl font-semibold tracking-[-0.05em] sm:text-5xl" aria-label={`${formatDuration(workedSeconds)} worked today`}>{fullTimer(workedSeconds)}</p>
-          <p className="mt-3 text-xs text-white/75">{openAttendance ? `Started ${new Date(openAttendance.checkInAt || `${openAttendance.date}T${openAttendance.checkIn}`).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}${openAttendance.shiftName ? ` · ${openAttendance.shiftName}` : ""}` : "Your timer begins after a verified attendance check-in."}</p>
+          <p className="mt-5 text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/65">Net worked today</p>
+          <p className="mt-1 font-mono text-4xl font-semibold tracking-[-0.05em] sm:text-5xl" aria-label={`${formatDuration(workedSeconds)} net work today`}>{fullTimer(workedSeconds)}</p>
+          <p className="mt-2 text-xs text-white/75">{openAttendance ? `Started ${new Date(openAttendance.checkInAt || `${openAttendance.date}T${openAttendance.checkIn}`).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}${openAttendance.shiftName ? ` · ${openAttendance.shiftName}` : ""}` : "Your timer begins after a verified attendance check-in."}</p>
+          <div className="mt-4 grid grid-cols-3 gap-2 text-[10px]"><div className="rounded-lg bg-white/10 p-2"><span className="block text-white/60">Assigned shift</span><strong className="mt-0.5 block truncate">{scheduleLabel}</strong></div><div className="rounded-lg bg-white/10 p-2"><span className="block text-white/60">Gross elapsed</span><strong className="mt-0.5 block">{formatDuration(grossSeconds)}</strong></div><div className="rounded-lg bg-white/10 p-2"><span className="block text-white/60">Unpaid break</span><strong className="mt-0.5 block">{formatDuration(unpaidBreakSeconds)}{breakAllowanceSeconds ? ` / ${formatDuration(breakAllowanceSeconds)}` : ""}</strong></div></div>
+          {unpaidBreakSeconds > breakAllowanceSeconds && breakAllowanceSeconds > 0 && <p className="mt-2 text-[10px] font-bold text-amber-200">Break allowance exceeded by {formatDuration(unpaidBreakSeconds - breakAllowanceSeconds)}.</p>}
           <div className="mt-auto grid grid-cols-2 gap-2 pt-6">
             {openAttendance && <button onClick={() => router.push("/employee/attendance")} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/35 bg-white/10 px-3 py-2.5 text-xs font-bold text-white transition hover:bg-white/20 focus:outline-none focus:ring-4 focus:ring-white/10"><Coffee className="h-4 w-4" />{activeBreak ? "Resume work" : "Take break"}</button>}
             <button onClick={() => router.push("/employee/attendance")} className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-white px-3 py-2.5 text-xs font-bold text-indigo-700 transition hover:bg-indigo-50 focus:outline-none focus:ring-4 focus:ring-white/30 ${openAttendance ? "" : "col-span-2"}`}><Clock3 className="h-4 w-4" />{openAttendance ? "Finish work" : "Start work"}</button>
@@ -210,9 +217,9 @@ export default function EmployeeDashboard() {
         <SectionHeader eyebrow="" title="Today’s Progress" />
         <div className="mt-5 flex items-center gap-5">
           <div className="relative grid h-32 w-32 shrink-0 place-items-center rounded-full" style={{ background: `conic-gradient(#22c55e 0 ${progressFirstStop}%, #f59e0b ${progressFirstStop}% ${progressSecondStop}%, #6d4aff ${progressSecondStop}% ${progressValue}%, #edf0f5 ${progressValue}% 100%)` }}>
-            <div className="grid h-[100px] w-[100px] place-items-center rounded-full bg-white text-center"><div><strong className="block text-3xl font-extrabold text-slate-950">{taskCompletion == null ? "—" : `${taskCompletion}%`}</strong><span className="text-[10px] font-semibold text-slate-400">of daily goal</span></div></div>
+            <div className="grid h-[100px] w-[100px] place-items-center rounded-full bg-white text-center"><div><strong className="block text-3xl font-extrabold text-slate-950">{taskCompletion == null ? "—" : `${taskCompletion}%`}</strong><span className="text-[10px] font-semibold text-slate-400">of today&apos;s tasks</span></div></div>
           </div>
-          <dl className="min-w-0 flex-1 space-y-4 text-xs"><div><dt className="text-slate-400">Time worked</dt><dd className="mt-0.5 font-extrabold text-slate-900">{formatDuration(workedSeconds)}</dd></div><div><dt className="text-slate-400">Tasks completed</dt><dd className="mt-0.5 font-extrabold text-slate-900">{completedTasks.length} / {data.tasks.length}</dd></div><div><dt className="text-slate-400">Reports approved</dt><dd className="mt-0.5 font-extrabold text-slate-900">{approvedReports}</dd></div></dl>
+          <dl className="min-w-0 flex-1 space-y-4 text-xs"><div><dt className="text-slate-400">Time worked</dt><dd className="mt-0.5 font-extrabold text-slate-900">{formatDuration(workedSeconds)}</dd></div><div><dt className="text-slate-400">Tasks completed today</dt><dd className="mt-0.5 font-extrabold text-slate-900">{completedTasks.length} / {taskStats.today.length}</dd></div><div><dt className="text-slate-400">Reports approved today</dt><dd className="mt-0.5 font-extrabold text-slate-900">{approvedReports}</dd></div></dl>
         </div>
       </section>
 
@@ -251,7 +258,7 @@ export default function EmployeeDashboard() {
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.04)] lg:col-span-2 xl:col-span-1">
         <SectionHeader eyebrow="" title="Your Performance" />
-        <div className="mt-4 text-center"><div className="mx-auto grid h-28 w-28 place-items-center rounded-full border-[9px] border-emerald-400 border-b-slate-100"><div><strong className="block text-3xl font-extrabold text-slate-950">{taskCompletion ?? "—"}</strong><span className="text-[10px] font-bold text-emerald-600">{taskCompletion == null ? "No task data" : taskCompletion >= 80 ? "Excellent" : "In progress"}</span></div></div></div>
+        <div className="mt-4 text-center"><div className="mx-auto grid h-28 w-28 place-items-center rounded-full border-[9px] border-emerald-400 border-b-slate-100"><div><strong className="block text-3xl font-extrabold text-slate-950">{taskCompletion == null ? "—" : `${taskCompletion}%`}</strong><span className="text-[10px] font-bold text-emerald-600">{taskCompletion == null ? "No tasks today" : taskCompletion >= 80 ? "Excellent" : "In progress"}</span></div></div></div>
         <dl className="mt-5 space-y-4 text-xs">
           <div className="grid grid-cols-[110px_1fr_38px] items-center gap-2"><dt className="flex items-center gap-2 text-slate-600"><Clock3 className="h-4 w-4 text-blue-500" />Time today</dt><dd className="h-1.5 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400" style={{ width: `${Math.min(100, Math.round(workedSeconds / 288))}%` }} /></dd><span className="text-right font-bold text-slate-800">{formatDuration(workedSeconds)}</span></div>
           <div className="grid grid-cols-[110px_1fr_38px] items-center gap-2"><dt className="flex items-center gap-2 text-slate-600"><Target className="h-4 w-4 text-emerald-500" />Tasks</dt><dd className="h-1.5 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-emerald-500" style={{ width: `${taskCompletion ?? 0}%` }} /></dd><span className="text-right font-bold text-slate-800">{taskCompletion == null ? "—" : `${taskCompletion}%`}</span></div>

@@ -1,4 +1,4 @@
-export const DEFAULT_AGENT_VERSION = "0.4.10";
+export const DEFAULT_AGENT_VERSION = "0.4.11";
 export const AGENT_VERSION = import.meta.env?.VITE_AGENT_VERSION || DEFAULT_AGENT_VERSION;
 
 function trimTrailingSlash(value) {

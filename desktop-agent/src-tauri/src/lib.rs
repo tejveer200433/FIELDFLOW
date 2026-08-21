@@ -2,6 +2,8 @@ mod browser_bridge;
 mod commands;
 mod database;
 mod input;
+#[cfg(windows)]
+mod instance;
 mod logging;
 mod models;
 mod platform;
@@ -50,29 +52,31 @@ fn disable_background_timer_throttling() {
 
 pub fn run() {
     #[cfg(windows)]
+    let primary_instance = match instance::acquire(&std::env::args().collect::<Vec<_>>()) {
+        Ok(instance::AcquireResult::Primary(instance)) => instance,
+        Ok(instance::AcquireResult::SecondarySignalled) => return,
+        Err(error) => {
+            eprintln!("{error}");
+            return;
+        }
+    };
+
+    #[cfg(windows)]
     disable_background_timer_throttling();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            if args.iter().any(|argument| argument == "--recovery") {
-                let _ = app.emit("agent-resume-requested", ());
-                return;
-            }
-            if args.iter().any(|argument| argument == "--minimized") {
-                return;
-            }
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
-        }))
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             Some(vec!["--minimized"]),
         ))
-        .setup(|app| {
+        .setup(move |app| {
+            #[cfg(windows)]
+            {
+                primary_instance.start_listeners(app.handle().clone());
+                app.manage(primary_instance);
+            }
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
             app.manage(
@@ -98,7 +102,12 @@ pub fn run() {
                         let _ = window_to_hide.hide();
                     }
                 });
-                if std::env::args().any(|argument| argument == "--minimized") {
+                if std::env::args().any(|argument| {
+                    matches!(
+                        argument.as_str(),
+                        "--minimized" | "--recovery" | "--watchdog"
+                    )
+                }) {
                     let _ = window.hide();
                 }
             }

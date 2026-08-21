@@ -101,7 +101,7 @@ test("temporary auth network failure is retryable and never calls local sign-out
   assert.ok(events.includes("auth_refresh_network_delayed"));
 });
 
-test("a rejected refresh retains the login and becomes retryable without exposing token values", async () => {
+test("a permanently rejected refresh requests sign-in without exposing token values", async () => {
   const events = [];
   const manager = createSessionManager({
     supabase: client({
@@ -115,16 +115,16 @@ test("a rejected refresh retains the login and becomes retryable without exposin
   });
 
   await assert.rejects(manager.getValidSession(), error => {
-    assert.equal(error.code, "AUTH_REFRESH_REJECTED_RETAINED");
-    assert.equal(error.retryable, true);
+    assert.equal(error.code, "AUTH_SESSION_REVOKED");
+    assert.equal(error.retryable, false);
     assert.equal(error.message.includes("access-secret"), false);
     assert.equal(error.message.includes("refresh-secret"), false);
     return true;
   });
-  assert.ok(events.includes("auth_refresh_rejected_retained"));
+  assert.ok(events.includes("auth_session_revoked"));
 });
 
-test("a long-suspend refresh rejection is retried and recovers without another sign-in", async () => {
+test("a long-suspend network interruption is retried and recovers without another sign-in", async () => {
   let current = { access_token: "expired-access", refresh_token: "saved-refresh", expires_at: 1 };
   let refreshes = 0;
   const events = [];
@@ -136,7 +136,7 @@ test("a long-suspend refresh rejection is retried and recovers without another s
         if (refreshes === 1) {
           return {
             data: { session: null },
-            error: Object.assign(new Error("Invalid Refresh Token"), { status: 400 })
+            error: Object.assign(new Error("network unavailable"), { name: "AuthRetryableFetchError", status: 0 })
           };
         }
         current = { access_token: "recovered-access", refresh_token: "rotated-refresh", expires_at: 4_000_000_000 };
@@ -146,12 +146,12 @@ test("a long-suspend refresh rejection is retried and recovers without another s
   };
   const manager = createSessionManager({ supabase, onEvent: event => events.push(event) });
 
-  await assert.rejects(manager.getValidSession(), error => error.code === "AUTH_REFRESH_REJECTED_RETAINED");
+  await assert.rejects(manager.getValidSession(), error => error.code === "AUTH_REFRESH_RETRYABLE");
   const recovered = await manager.getValidSession();
 
   assert.equal(recovered.access_token, "recovered-access");
   assert.equal(refreshes, 2);
-  assert.ok(events.includes("auth_refresh_rejected_retained"));
+  assert.ok(events.includes("auth_refresh_network_delayed"));
   assert.ok(events.includes("auth_refresh_succeeded"));
 });
 

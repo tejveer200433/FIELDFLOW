@@ -21,7 +21,7 @@ function isRetryable(error) {
     || /network|fetch|timeout|temporar|unavailable|connection|credential|secure.session|storage|locked/.test(message);
 }
 
-function sessionError(error, { retainRejected = false } = {}) {
+function sessionError(error) {
   if (isRetryable(error)) {
     return new AgentSessionError(
       "FieldFlow authentication is temporarily unavailable. The saved session has been retained.",
@@ -29,15 +29,8 @@ function sessionError(error, { retainRejected = false } = {}) {
       { retryable: true, cause: error }
     );
   }
-  if (retainRejected) {
-    return new AgentSessionError(
-      "FieldFlow could not rotate the saved session yet. The login has been retained and recovery will retry automatically.",
-      "AUTH_REFRESH_REJECTED_RETAINED",
-      { retryable: true, cause: error }
-    );
-  }
   return new AgentSessionError(
-    "Your saved FieldFlow session is no longer valid. Sign in again.",
+    "Your saved FieldFlow login has expired or was revoked. Sign in again.",
     "AUTH_SESSION_REVOKED",
     { cause: error }
   );
@@ -57,8 +50,8 @@ export function createSessionManager({ supabase, onEvent = () => {}, now = () =>
     const request = (async () => {
       const { data, error } = await supabase.auth.getSession();
       if (error) {
-        const classified = sessionError(error, { retainRejected: true });
-        report(classified.code === "AUTH_REFRESH_REJECTED_RETAINED" ? "auth_refresh_rejected_retained" : "auth_refresh_network_delayed", "warn");
+        const classified = sessionError(error);
+        report(classified.code === "AUTH_SESSION_REVOKED" ? "auth_session_revoked" : "auth_refresh_network_delayed", "warn");
         throw classified;
       }
       return data.session || null;
@@ -77,16 +70,15 @@ export function createSessionManager({ supabase, onEvent = () => {}, now = () =>
     const request = (async () => {
       const { data, error } = await supabase.auth.refreshSession();
       if (error) {
-        const classified = sessionError(error, { retainRejected: true });
-        report(classified.code === "AUTH_REFRESH_REJECTED_RETAINED" ? "auth_refresh_rejected_retained" : "auth_refresh_network_delayed", "warn");
+        const classified = sessionError(error);
+        report(classified.code === "AUTH_SESSION_REVOKED" ? "auth_session_revoked" : "auth_refresh_network_delayed", "warn");
         throw classified;
       }
       if (!data.session?.access_token) {
-        report("auth_refresh_rejected_retained", "warn");
+        report("auth_session_revoked", "warn");
         throw new AgentSessionError(
-          "FieldFlow could not rotate the saved session yet. The login has been retained and recovery will retry automatically.",
-          "AUTH_REFRESH_REJECTED_RETAINED",
-          { retryable: true }
+          "Your saved FieldFlow login has expired or was revoked. Sign in again.",
+          "AUTH_SESSION_REVOKED"
         );
       }
       report("auth_refresh_succeeded");

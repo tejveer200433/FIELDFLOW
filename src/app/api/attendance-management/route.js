@@ -71,8 +71,8 @@ async function assertActiveShift(client, shiftTemplateId) {
 
 function attendanceUpgradeError(error) {
   if (["42P01", "PGRST205", "PGRST204"].includes(error?.code)
-    || /attendance_(shift_templates|geofence_assignments|corrections|breaks)/i.test(error?.message || "")) {
-    return new ApiError("Attendance management is not installed yet. Run migration 202607240002_attendance_management.sql in Supabase.", 503);
+    || /attendance_(shift_templates|geofence_assignments|corrections|breaks|anomalies|audit|reminders|privacy)/i.test(error?.message || "")) {
+    return new ApiError("Attendance management is not fully installed. Run the latest attendance migrations in Supabase.", 503);
   }
   return error;
 }
@@ -128,6 +128,14 @@ export async function GET(request) {
   try {
     const session = await requireAnyPermission(request, managementPermissions);
     const scope = await attendanceScope(session);
+    if (scope.type === "self") {
+      const maintenance = await Promise.all([
+        session.client.rpc("auto_close_overdue_attendance", { p_employee_id: session.profile.id }),
+        session.client.rpc("refresh_my_attendance_reminders")
+      ]);
+      const maintenanceError = maintenance.find(item => item.error && !["42883", "PGRST202"].includes(item.error.code));
+      if (maintenanceError) throw maintenanceError.error;
+    }
     const url = new URL(request.url);
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
@@ -151,6 +159,12 @@ export async function GET(request) {
       .select("*").lte("start_date", to).gte("end_date", from).order("created_at", { ascending: false });
     let correctionQuery = session.client.from("attendance_corrections")
       .select("*").order("created_at", { ascending: false }).limit(250);
+    let anomalyQuery = session.client.from("attendance_anomalies")
+      .select("*").order("created_at", { ascending: false }).limit(250);
+    let auditQuery = session.client.from("attendance_audit_log")
+      .select("*").order("created_at", { ascending: false }).limit(250);
+    let reminderQuery = session.client.from("attendance_reminders")
+      .select("*").is("dismissed_at", null).order("due_at", { ascending: true }).limit(100);
 
     if (scope.type !== "all") {
       profileQuery = profileQuery.in("id", scope.userIds);
@@ -159,6 +173,9 @@ export async function GET(request) {
       breakQuery = breakQuery.in("employee_id", scope.userIds);
       leaveQuery = leaveQuery.in("employee_id", scope.userIds);
       correctionQuery = correctionQuery.in("employee_id", scope.userIds);
+      anomalyQuery = anomalyQuery.in("employee_id", scope.userIds);
+      auditQuery = auditQuery.in("employee_id", scope.userIds);
+      reminderQuery = reminderQuery.in("employee_id", scope.userIds);
     }
 
     const [
@@ -173,7 +190,11 @@ export async function GET(request) {
       assignments,
       locations,
       teams,
-      projects
+      projects,
+      anomalies,
+      auditLog,
+      reminders,
+      privacySettings
     ] = await Promise.all([
       result(profileQuery),
       result(session.client.from("attendance_shift_templates").select("*").order("name")),
@@ -186,7 +207,11 @@ export async function GET(request) {
       result(session.client.from("attendance_geofence_assignments").select("*").order("created_at", { ascending: false })),
       result(session.client.from("attendance_locations").select("id,name,radius_m,active").order("name")),
       result(session.client.from("teams").select("id,name").order("name")),
-      result(session.client.from("projects").select("id,title,status").order("title"))
+      result(session.client.from("projects").select("id,title,status").order("title")),
+      result(anomalyQuery),
+      result(auditQuery),
+      result(reminderQuery),
+      result(session.client.from("attendance_privacy_settings").select("*").limit(1))
     ]);
 
     const profileById = new Map(profiles.map(profile => [profile.id, profile]));
@@ -245,13 +270,16 @@ export async function GET(request) {
           employeeId: row.employee_id,
           employee: name(row.employee_id),
           startedAt: row.started_at,
-          endedAt: row.ended_at
+          endedAt: row.ended_at,
+          breakType: row.break_type || "unpaid",
+          policyExceeded: Boolean(row.policy_exceeded)
         })),
         leaves: leaves.map(row => ({
           id: row.id,
           employeeId: row.employee_id,
           employee: name(row.employee_id),
           type: row.leave_type,
+          duration: row.leave_duration || "full_day",
           startDate: row.start_date,
           endDate: row.end_date,
           reason: row.reason,
@@ -301,6 +329,43 @@ export async function GET(request) {
           radiusM: row.radius_m,
           active: row.active
         })),
+        anomalies: anomalies.map(row => ({
+          id: row.id,
+          shiftId: row.shift_id,
+          employeeId: row.employee_id,
+          employee: name(row.employee_id),
+          type: row.anomaly_type,
+          severity: row.severity,
+          details: row.details || {},
+          status: row.status,
+          resolutionNote: row.resolution_note || "",
+          createdAt: row.created_at
+        })),
+        auditLog: auditLog.map(row => ({
+          id: row.id,
+          shiftId: row.shift_id,
+          employeeId: row.employee_id,
+          employee: name(row.employee_id),
+          actorId: row.actor_id,
+          type: row.event_type,
+          data: row.event_data || {},
+          createdAt: row.created_at
+        })),
+        reminders: reminders.map(row => ({
+          id: row.id,
+          employeeId: row.employee_id,
+          shiftId: row.shift_id,
+          type: row.reminder_type,
+          message: row.message,
+          dueAt: row.due_at,
+          deliveredAt: row.delivered_at
+        })),
+        privacy: privacySettings[0] ? {
+          locationDuringActiveShiftOnly: privacySettings[0].location_during_active_shift_only,
+          locationRetentionDays: privacySettings[0].location_retention_days,
+          auditRetentionDays: privacySettings[0].audit_retention_days,
+          photoEvidenceRiskThreshold: privacySettings[0].photo_evidence_risk_threshold
+        } : null,
         teams,
         projects: projects.map(project => ({ id: project.id, name: project.title, status: project.status }))
       }
@@ -321,19 +386,24 @@ export async function POST(request) {
         throw new ApiError("You do not have permission to record breaks.", 403);
       }
       const rpc = action === "break-start" ? "start_attendance_break" : "end_attendance_break";
-      const { data, error } = await session.client.rpc(rpc);
+      const breakType = body.breakType || "unpaid";
+      if (!["paid", "unpaid"].includes(breakType)) throw new ApiError("Select a valid break type.");
+      const { data, error } = await session.client.rpc(rpc, action === "break-start" ? { p_break_type: breakType } : undefined);
       if (error?.code === "23505") throw new ApiError("You already have an active break.", 409);
       if (error) throw error;
-      return Response.json({ data: { id: data }, message: action === "break-start" ? "Break started." : "Break ended." });
+      return Response.json({ data: { id: data }, message: action === "break-start" ? `${breakType === "paid" ? "Paid" : "Unpaid"} break started.` : "Break ended." });
     }
 
     if (action === "leave") {
       if (!hasPermission(session.access, "attendance.view_self")) throw new ApiError("You do not have permission to request leave.", 403);
       const leaveType = clean(body.type, 40);
       if (!["Annual", "Sick", "Casual", "Unpaid", "Other"].includes(leaveType)) throw new ApiError("Select a valid leave type.");
+      const leaveDuration = clean(body.duration || "full_day", 20);
+      if (!["full_day", "first_half", "second_half"].includes(leaveDuration)) throw new ApiError("Select a valid leave duration.");
       const startDate = date(body.startDate, "Leave start date");
       const endDate = date(body.endDate, "Leave end date");
       if (endDate < startDate) throw new ApiError("Leave end date must not be before the start date.");
+      if (leaveDuration !== "full_day" && startDate !== endDate) throw new ApiError("Half-day leave must start and end on the same date.");
       const reason = clean(body.reason, 2000);
       if (reason.length < 2) throw new ApiError("Enter a reason for the leave request.");
       const { data: overlap, error: overlapError } = await session.client.from("leave_requests")
@@ -345,6 +415,7 @@ export async function POST(request) {
       const { data: created, error } = await session.client.from("leave_requests").insert({
         employee_id: session.profile.id,
         leave_type: leaveType,
+        leave_duration: leaveDuration,
         start_date: startDate,
         end_date: endDate,
         reason
@@ -510,6 +581,31 @@ export async function PATCH(request) {
     const session = await requireAnyPermission(request, managementPermissions);
     const body = await request.json();
 
+    if (body.action === "review-bulk") {
+      if (!hasPermission(session.access, "attendance.approve") && !hasPermission(session.access, "settings.manage")) {
+        throw new ApiError("You do not have permission to review attendance requests.", 403);
+      }
+      if (!Array.isArray(body.items) || !body.items.length || body.items.length > 50 || !["Approved", "Rejected"].includes(body.status)) {
+        throw new ApiError("Select between 1 and 50 requests and a valid decision.");
+      }
+      let reviewed = 0;
+      for (const item of body.items) {
+        if (!item.id || !["review-leave", "review-correction"].includes(item.action)) throw new ApiError("Bulk review contains an invalid request.");
+        const table = item.action === "review-leave" ? "leave_requests" : "attendance_corrections";
+        const rpc = item.action === "review-leave" ? "review_leave_request" : "review_attendance_correction";
+        const { data: requestRecord, error: requestError } = await session.client.from(table).select("employee_id").eq("id", item.id).single();
+        if (requestError) throw requestError;
+        const { error } = await session.client.rpc(rpc, { p_request_id: item.id, p_status: body.status, p_comment: clean(body.comment, 1000) || null });
+        if (error) throw error;
+        await session.client.rpc("create_attendance_decision_reminder", {
+          p_employee_id: requestRecord.employee_id,
+          p_message: `${item.action === "review-leave" ? "Leave" : "Attendance correction"} ${body.status.toLowerCase()}: ${clean(body.comment, 400) || "Decision recorded."}`
+        });
+        reviewed += 1;
+      }
+      return Response.json({ message: `${reviewed} attendance request${reviewed === 1 ? "" : "s"} ${body.status.toLowerCase()}.` });
+    }
+
     if (body.action === "review-leave" || body.action === "review-correction") {
       if (!hasPermission(session.access, "attendance.approve") && !hasPermission(session.access, "settings.manage")) {
         throw new ApiError("You do not have permission to review attendance requests.", 403);
@@ -520,13 +616,64 @@ export async function PATCH(request) {
       const rpc = body.action === "review-leave"
         ? "review_leave_request"
         : "review_attendance_correction";
+      const table = body.action === "review-leave" ? "leave_requests" : "attendance_corrections";
+      const { data: requestRecord, error: requestError } = await session.client.from(table)
+        .select("employee_id").eq("id", body.id).single();
+      if (requestError) throw requestError;
       const { error } = await session.client.rpc(rpc, {
         p_request_id: body.id,
         p_status: body.status,
         p_comment: clean(body.comment, 1000) || null
       });
       if (error) throw error;
+      await session.client.rpc("create_attendance_decision_reminder", {
+        p_employee_id: requestRecord.employee_id,
+        p_message: `${body.action === "review-leave" ? "Leave" : "Attendance correction"} ${body.status.toLowerCase()}: ${clean(body.comment, 400) || "Decision recorded."}`
+      });
       return Response.json({ message: `${body.action === "review-leave" ? "Leave" : "Correction"} request ${body.status.toLowerCase()}.` });
+    }
+
+    if (body.action === "resolve-anomaly") {
+      if (!hasPermission(session.access, "attendance.approve") && !hasPermission(session.access, "settings.manage")) {
+        throw new ApiError("You do not have permission to resolve attendance anomalies.", 403);
+      }
+      if (!body.id || !["resolved", "dismissed"].includes(body.status)) throw new ApiError("Select an anomaly and resolution.");
+      const { data: anomaly, error: anomalyError } = await session.client.from("attendance_anomalies")
+        .select("id,employee_id").eq("id", body.id).single();
+      if (anomalyError) throw anomalyError;
+      await assertManageUser(session, anomaly.employee_id);
+      const { error } = await session.client.from("attendance_anomalies").update({
+        status: body.status,
+        resolution_note: clean(body.comment, 1000) || null,
+        resolved_by: session.profile.id,
+        resolved_at: new Date().toISOString()
+      }).eq("id", body.id);
+      if (error) throw error;
+      return Response.json({ message: `Attendance anomaly ${body.status}.` });
+    }
+
+    if (body.action === "dismiss-reminder") {
+      if (!body.id) throw new ApiError("Select a reminder.");
+      const { error } = await session.client.from("attendance_reminders")
+        .update({ dismissed_at: new Date().toISOString() }).eq("id", body.id).eq("employee_id", session.profile.id);
+      if (error) throw error;
+      return Response.json({ message: "Reminder dismissed." });
+    }
+
+    if (body.action === "privacy-settings") {
+      if (!hasPermission(session.access, "settings.manage")) throw new ApiError("You do not have permission to update attendance privacy.", 403);
+      const values = {
+        singleton: true,
+        location_during_active_shift_only: body.locationDuringActiveShiftOnly !== false,
+        location_retention_days: number(body.locationRetentionDays, "Location retention", 7, 730),
+        audit_retention_days: number(body.auditRetentionDays, "Audit retention", 30, 3650),
+        photo_evidence_risk_threshold: number(body.photoEvidenceRiskThreshold, "Photo evidence threshold", 0, 100),
+        updated_by: session.profile.id,
+        updated_at: new Date().toISOString()
+      };
+      const { error } = await session.client.from("attendance_privacy_settings").upsert(values, { onConflict: "singleton" });
+      if (error) throw error;
+      return Response.json({ message: "Attendance privacy settings updated." });
     }
 
     if (body.action === "toggle-assignment") {
