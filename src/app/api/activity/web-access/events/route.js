@@ -1,4 +1,5 @@
 import { requireActivitySession, ACTIVITY_PERMISSIONS, resolveActivityScope } from "@/backend/activity/auth";
+import { getActivityProfiles } from "@/backend/activity/data";
 import { enforceActivityRateLimit } from "@/backend/activity/rateLimit";
 import { activityFailure, activitySuccess, readActivityJson } from "@/backend/activity/responses";
 import { parseWebAccessEvent } from "@/backend/activity/webAccess.mjs";
@@ -13,7 +14,10 @@ export async function GET(request) {
     if (scope.userIds) query = query.in("employee_id", scope.userIds);
     const { data, error } = await query;
     if (error) throw error;
-    return activitySuccess({ events: data || [] });
+    const employeeIds = [...new Set((data || []).map(row => row.employee_id).filter(Boolean))];
+    const profiles = employeeIds.length ? await getActivityProfiles(session.client, employeeIds) : [];
+    const employeeNames = new Map(profiles.map(profile => [profile.employeeId, profile.name]));
+    return activitySuccess({ events: (data || []).map(row => ({ ...row, employeeName: employeeNames.get(row.employee_id) || null })) });
   } catch (error) { return activityFailure(error); }
 }
 

@@ -1,9 +1,10 @@
 import { requireActivitySession, ACTIVITY_PERMISSIONS, resolveActivityScope } from "@/backend/activity/auth";
+import { getActivityProfiles } from "@/backend/activity/data";
 import { enforceActivityRateLimit } from "@/backend/activity/rateLimit";
 import { ActivityError, activityFailure, activitySuccess, readActivityJson } from "@/backend/activity/responses";
 
 export const dynamic = "force-dynamic";
-const map = row => ({ id: row.id, employeeId: row.employee_id, deviceId: row.device_id, browserName: row.browser_name, extensionId: row.extension_id, extensionVersion: row.extension_version, status: row.status, lastSeenAt: row.last_seen_at, missingSince: row.missing_since, updatedAt: row.updated_at });
+const map = (row, employeeNames = new Map()) => ({ id: row.id, employeeId: row.employee_id, employeeName: employeeNames.get(row.employee_id) || null, deviceId: row.device_id, browserName: row.browser_name, extensionId: row.extension_id, extensionVersion: row.extension_version, status: row.status, lastSeenAt: row.last_seen_at, missingSince: row.missing_since, updatedAt: row.updated_at });
 
 export async function GET(request) {
   try {
@@ -13,7 +14,10 @@ export async function GET(request) {
     if (scope.userIds) query = query.in("employee_id", scope.userIds);
     const { data, error } = await query;
     if (error) throw error;
-    return activitySuccess({ statuses: (data || []).map(map) });
+    const employeeIds = [...new Set((data || []).map(row => row.employee_id).filter(Boolean))];
+    const profiles = employeeIds.length ? await getActivityProfiles(session.client, employeeIds) : [];
+    const employeeNames = new Map(profiles.map(profile => [profile.employeeId, profile.name]));
+    return activitySuccess({ statuses: (data || []).map(row => map(row, employeeNames)) });
   } catch (error) { return activityFailure(error); }
 }
 

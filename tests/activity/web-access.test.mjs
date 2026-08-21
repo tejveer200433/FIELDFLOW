@@ -45,3 +45,20 @@ test("database controls are additive, scoped, and alert on extension health", ()
   assert.match(migration, /fieldflow-web-access-health/);
   assert.doesNotMatch(migration, /grant execute on function public\.web_access_notify_managers[^;]+to authenticated/);
 });
+
+test("monitoring views resolve employee and device names instead of rendering raw UUIDs", () => {
+  const administration = readFileSync("src/frontend/features/activity/components/WebAccessAdministration.js", "utf8");
+  const extensionHealth = readFileSync("src/app/api/activity/web-access/extension-health/route.js", "utf8");
+  const events = readFileSync("src/app/api/activity/web-access/events/route.js", "utf8");
+  const requests = readFileSync("src/app/api/activity/web-access/requests/route.js", "utf8");
+
+  for (const route of [extensionHealth, events, requests]) {
+    assert.match(route, /getActivityProfiles/);
+    assert.match(route, /employeeName/);
+  }
+  assert.match(administration, /employeeLabel\(item\.employeeId, item\.employeeName\)/);
+  assert.match(administration, /employeeLabel\(item\.employee_id, item\.employeeName\)/);
+  assert.match(administration, /Device: \{deviceLabel\(item\.deviceId\)\}/);
+  assert.match(administration, /ruleScopeLabel\(rule\)/);
+  assert.doesNotMatch(administration, /employee \{item\.(employeeId|employee_id)\}/);
+});

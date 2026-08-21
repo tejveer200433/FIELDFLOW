@@ -1,11 +1,12 @@
 import { activityCan, requireActivitySession, ACTIVITY_PERMISSIONS, resolveActivityScope } from "@/backend/activity/auth";
+import { getActivityProfiles } from "@/backend/activity/data";
 import { enforceActivityRateLimit } from "@/backend/activity/rateLimit";
 import { activityFailure, activitySuccess, readActivityJson } from "@/backend/activity/responses";
 import { parseWebAccessRequest, parseWebAccessReview } from "@/backend/activity/webAccess.mjs";
 
 export const dynamic = "force-dynamic";
 const select = "id,employee_id,device_id,resource_type,resource_key,reason,project_id,task_id,requested_minutes,requested_scope,status,granted_minutes,approval_scope,access_starts_at,access_ends_at,reviewer_comment,reviewed_by,reviewed_at,created_at";
-const map = row => ({ id: row.id, employeeId: row.employee_id, deviceId: row.device_id, resourceType: row.resource_type, resourceKey: row.resource_key, reason: row.reason, projectId: row.project_id, taskId: row.task_id, requestedMinutes: row.requested_minutes, requestedScope: row.requested_scope, status: row.status, grantedMinutes: row.granted_minutes, approvalScope: row.approval_scope, accessStartsAt: row.access_starts_at, accessEndsAt: row.access_ends_at, reviewerComment: row.reviewer_comment, reviewedBy: row.reviewed_by, reviewedAt: row.reviewed_at, createdAt: row.created_at });
+const map = (row, employeeNames = new Map()) => ({ id: row.id, employeeId: row.employee_id, employeeName: employeeNames.get(row.employee_id) || null, deviceId: row.device_id, resourceType: row.resource_type, resourceKey: row.resource_key, reason: row.reason, projectId: row.project_id, taskId: row.task_id, requestedMinutes: row.requested_minutes, requestedScope: row.requested_scope, status: row.status, grantedMinutes: row.granted_minutes, approvalScope: row.approval_scope, accessStartsAt: row.access_starts_at, accessEndsAt: row.access_ends_at, reviewerComment: row.reviewer_comment, reviewedBy: row.reviewed_by, reviewedAt: row.reviewed_at, createdAt: row.created_at });
 
 export async function GET(request) {
   try {
@@ -20,7 +21,10 @@ export async function GET(request) {
     }
     const { data, error } = await query;
     if (error) throw error;
-    return activitySuccess({ requests: (data || []).map(map), canReview });
+    const employeeIds = [...new Set((data || []).map(row => row.employee_id).filter(Boolean))];
+    const profiles = employeeIds.length ? await getActivityProfiles(session.client, employeeIds) : [];
+    const employeeNames = new Map(profiles.map(profile => [profile.employeeId, profile.name]));
+    return activitySuccess({ requests: (data || []).map(row => map(row, employeeNames)), canReview });
   } catch (error) { return activityFailure(error); }
 }
 
