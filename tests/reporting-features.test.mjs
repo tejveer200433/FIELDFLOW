@@ -38,7 +38,8 @@ test("manager reports send filters to the API and keep polling overlap-safe", ()
   assert.match(workspace, /new URLSearchParams\(\{ limit: "50", offset: String\(offset\) \}\)/);
   assert.match(workspace, /apiJson\(`\/api\/reports\?\$\{params\}`/);
   assert.match(workspace, /if \(inFlight\.current\) return/);
-  assert.match(workspace, /setInterval\(load, 5000\)/);
+  assert.match(workspace, /document\.visibilityState === "visible"/);
+  assert.match(workspace, /setInterval\(\(\) => \{ if \(document\.visibilityState === "visible"\) load\(\); \}, 30000\)/);
   for (const label of ["All teams", "All employees", "All tasks", "From", "To", "Reset filters"]) {
     assert.match(workspace, new RegExp(label));
   }

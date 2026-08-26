@@ -29,7 +29,8 @@ export async function GET(request, { params }) {
 
     const startTime = `${startDate}T00:00:00.000Z`;
     const endTime = `${endDate}T23:59:59.999Z`;
-    const [devicesResult, sessionsResult, activeSessionResult, summariesResult, heartbeatsResult, samplesResult, websitesResult, codingResult, screenshotsResult, policy] = await Promise.all([
+    const today = new Date().toISOString().slice(0, 10);
+    const [devicesResult, sessionsResult, activeSessionResult, summariesResult, heartbeatsResult, usageResult, screenshotsResult, policy] = await Promise.all([
       session.client.from("employee_devices")
         .select("id,employee_id,device_name,platform,operating_system_version,agent_version,status,registered_at,last_seen_at,revoked_at")
         .eq("employee_id", employeeId).order("registered_at", { ascending: false }),
@@ -48,25 +49,19 @@ export async function GET(request, { params }) {
       session.client.from("agent_heartbeats")
         .select("device_id,tracking_session_id,recorded_at,agent_version,online_status,battery_level")
         .eq("employee_id", employeeId).order("recorded_at", { ascending: false }).limit(50),
-      session.client.from("activity_samples")
-        .select("tracking_session_id,captured_at,active_application,idle_seconds,keyboard_event_count,mouse_event_count")
-        .eq("employee_id", employeeId).gte("captured_at", startTime).lte("captured_at", endTime)
-        .order("captured_at", { ascending: false }).limit(5000),
-      session.client.from("website_activity_samples")
-        .select("captured_at,domain,browser_name,duration_seconds")
-        .eq("employee_id", employeeId).gte("captured_at", startTime).lte("captured_at", endTime)
-        .order("captured_at", { ascending: false }).limit(5000),
-      session.client.from("coding_activity_samples")
-        .select("captured_at,ide_name,project_name,duration_seconds")
-        .eq("employee_id", employeeId).gte("captured_at", startTime).lte("captured_at", endTime)
-        .order("captured_at", { ascending: false }).limit(5000),
+      session.client.rpc("activity_employee_usage_summary", {
+        p_employee_id: employeeId,
+        p_start_at: startTime,
+        p_end_at: endTime,
+        p_today_start: `${today}T00:00:00.000Z`
+      }),
       session.client.from("activity_screenshots")
         .select("id,captured_at,storage_path,active_application")
         .eq("employee_id", employeeId).gte("captured_at", startTime).lte("captured_at", endTime)
         .order("captured_at", { ascending: false }).limit(200),
       getActivePolicy(session.client, { required: false })
     ]);
-    const failure = [devicesResult, sessionsResult, activeSessionResult, summariesResult, heartbeatsResult, samplesResult, websitesResult, codingResult, screenshotsResult]
+    const failure = [devicesResult, sessionsResult, activeSessionResult, summariesResult, heartbeatsResult, usageResult, screenshotsResult]
       .find(result => result.error);
     if (failure) throw failure.error;
 
@@ -83,47 +78,23 @@ export async function GET(request, { params }) {
           && item.device_id === currentSession.device_id
         ) || null
       : heartbeatsResult.data?.[0] || null;
-    const applicationCounts = new Map();
-    const websiteCounts = new Map();
-    const codingCounts = new Map();
-    if (policy?.collect_coding_project_names) {
-      for (const sample of codingResult.data || []) {
-        const key = `${sample.ide_name}:${sample.project_name}`;
-        const current = codingCounts.get(key) || { ideName: sample.ide_name, projectName: sample.project_name, durationSeconds: 0, lastSeenAt: null };
-        current.durationSeconds += Number(sample.duration_seconds) || 0;
-        if (!current.lastSeenAt) current.lastSeenAt = sample.captured_at;
-        codingCounts.set(key, current);
-      }
-    }
-    for (const sample of websitesResult.data || []) {
-      const current = websiteCounts.get(sample.domain) || { durationSeconds: 0, lastSeenAt: null };
-      current.durationSeconds += Number(sample.duration_seconds) || 0;
-      if (!current.lastSeenAt) current.lastSeenAt = sample.captured_at;
-      websiteCounts.set(sample.domain, current);
-    }
-    const today = new Date().toISOString().slice(0, 10);
+    const usageRows = usageResult.data || [];
+    const input = usageRows.find(row => row.category === "input");
     const todayInputActivity = {
-      keyboardEventCount: 0,
-      mouseEventCount: 0,
-      sampleCount: 0,
-      lastSampleAt: null
+      keyboardEventCount: Number(input?.keyboard_event_count) || 0,
+      mouseEventCount: Number(input?.mouse_event_count) || 0,
+      sampleCount: Number(input?.sample_count) || 0,
+      lastSampleAt: input?.last_seen_at || null
     };
-    for (const sample of samplesResult.data || []) {
-      if (!sample.captured_at?.startsWith(today)) continue;
-      todayInputActivity.keyboardEventCount += Number(sample.keyboard_event_count) || 0;
-      todayInputActivity.mouseEventCount += Number(sample.mouse_event_count) || 0;
-      todayInputActivity.sampleCount += 1;
-      if (!todayInputActivity.lastSampleAt) todayInputActivity.lastSampleAt = sample.captured_at;
-    }
-    if (policy?.collect_application_names) {
-      for (const sample of samplesResult.data || []) {
-        if (!sample.active_application) continue;
-        const current = applicationCounts.get(sample.active_application) || { sampleCount: 0, lastSeenAt: null };
-        current.sampleCount += 1;
-        if (!current.lastSeenAt) current.lastSeenAt = sample.captured_at;
-        applicationCounts.set(sample.active_application, current);
-      }
-    }
+    const websiteUsage = usageRows.filter(row => row.category === "website")
+      .map(row => ({ domain: row.primary_label, durationSeconds: Number(row.duration_seconds) || 0, lastSeenAt: row.last_seen_at }))
+      .sort((a, b) => b.durationSeconds - a.durationSeconds).slice(0, 25);
+    const applicationUsage = policy?.collect_application_names ? usageRows.filter(row => row.category === "application")
+      .map(row => ({ application: row.primary_label, sampleCount: Number(row.sample_count) || 0, lastSeenAt: row.last_seen_at }))
+      .sort((a, b) => b.sampleCount - a.sampleCount).slice(0, 25) : [];
+    const codingUsage = policy?.collect_coding_project_names ? usageRows.filter(row => row.category === "coding")
+      .map(row => ({ ideName: row.primary_label, projectName: row.secondary_label, durationSeconds: Number(row.duration_seconds) || 0, lastSeenAt: row.last_seen_at }))
+      .sort((a, b) => b.durationSeconds - a.durationSeconds).slice(0, 25) : [];
     return activitySuccess({
       employee: profiles[0],
       currentStatus: deriveActivityStatus({
@@ -144,12 +115,9 @@ export async function GET(request, { params }) {
       })),
       timeline: sessions.map(mapSession),
       todayInputActivity,
-      websiteUsage: Array.from(websiteCounts, ([domain, value]) => ({ domain, ...value }))
-        .sort((a, b) => b.durationSeconds - a.durationSeconds).slice(0, 25),
-      applicationUsage: Array.from(applicationCounts, ([application, value]) => ({ application, ...value }))
-        .sort((a, b) => b.sampleCount - a.sampleCount).slice(0, 25),
-      codingUsage: Array.from(codingCounts.values())
-        .sort((a, b) => b.durationSeconds - a.durationSeconds).slice(0, 25),
+      websiteUsage,
+      applicationUsage,
+      codingUsage,
       screenshots: (screenshotsResult.data || []).map(mapScreenshot),
       recentHeartbeat: heartbeat ? {
         deviceId: heartbeat.device_id,

@@ -88,7 +88,10 @@ test("employee device controls are explicitly scoped to the signed-in employee",
 test("aggregate keyboard and mouse counts are returned and shown without event details", () => {
   const inputSummary = read("src/frontend/features/activity/components/InputActivitySummary.js");
   const employeeRoute = read("src/app/api/activity/employees/[employeeId]/route.js");
-  assert.match(employeeRoute, /keyboard_event_count,mouse_event_count/);
+  const usageSummary = read("supabase/migrations/202608260003_activity_usage_summary_performance.sql");
+  assert.match(employeeRoute, /activity_employee_usage_summary/);
+  assert.match(usageSummary, /keyboard_event_count/);
+  assert.match(usageSummary, /mouse_event_count/);
   assert.match(employeeRoute, /todayInputActivity/);
   assert.match(inputSummary, /Keyboard events/);
   assert.match(inputSummary, /Mouse events/);
@@ -99,7 +102,9 @@ test("aggregate keyboard and mouse counts are returned and shown without event d
 test("website usage renders hostnames without full URL or page content fields", () => {
   const website = read("src/frontend/features/activity/components/WebsiteUsageSummary.js");
   const route = read("src/app/api/activity/employees/[employeeId]/route.js");
-  assert.match(route, /website_activity_samples/);
+  const usageSummary = read("supabase/migrations/202608260003_activity_usage_summary_performance.sql");
+  assert.match(route, /activity_employee_usage_summary/);
+  assert.match(usageSummary, /website_activity_samples/);
   assert.match(route, /websiteUsage/);
   assert.match(website, /item\.domain/);
   assert.doesNotMatch(website, /item\.(url|path|query|title|content)/);

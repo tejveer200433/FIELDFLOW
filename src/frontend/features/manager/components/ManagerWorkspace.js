@@ -283,7 +283,11 @@ function Reports({ access }) {
       if (presetResult.status === "fulfilled") setPresets(presetResult.value.data || []);
     });
   }, []);
-  useEffect(() => { load(); const timer = setInterval(load, 5000); return () => clearInterval(timer); }, [load]);
+  useEffect(() => {
+    load();
+    const timer = setInterval(() => { if (document.visibilityState === "visible") load(); }, 30000);
+    return () => clearInterval(timer);
+  }, [load]);
   function updateFilter(key, value) {
     setOffset(0);
     setFilters(current => ({ ...current, [key]: value, ...(key === "teamId" ? { employeeId: "" } : {}) }));
@@ -397,7 +401,11 @@ function Expenses() {
   const [filter, setFilter] = useState("All");
   const [comments, setComments] = useState({});
   const load = useCallback(() => apiJson("/api/expenses", { cache: "no-store" }).then(payload => setItems(payload.data)), []);
-  useEffect(() => { load(); const timer = setInterval(load, 5000); return () => clearInterval(timer); }, [load]);
+  useEffect(() => {
+    load();
+    const timer = setInterval(() => { if (document.visibilityState === "visible") load(); }, 30000);
+    return () => clearInterval(timer);
+  }, [load]);
   const visible = filter === "All" ? items : items.filter(item => item.status === filter);
   async function decide(id, status) { await apiJson("/api/expenses", { method: "PATCH", body: JSON.stringify({ id, status, managerComment: comments[id] || `${status} by manager.` }) }); load(); }
   return <><PageHeading title="Expenses" subtitle="Employee submissions appear here for approval." /><div className="mb-5 flex flex-wrap gap-2">{["All", "Pending", "Approved", "Rejected"].map(item => <button key={item} onClick={() => setFilter(item)} className={filter === item ? "btn-primary rounded-full" : "btn-secondary rounded-full"}>{item}</button>)}</div><div className="card overflow-x-auto"><table className="min-w-full text-left"><thead className="bg-slate-50 text-xs uppercase tracking-widest text-slate-500"><tr><th className="px-5 py-4">Employee</th><th>Type</th><th>Date</th><th>Note</th><th>Amount</th><th>Status</th><th>Decision</th></tr></thead><tbody>{visible.map(item => <tr className="border-t" key={item.id}><td className="px-5 py-5 font-bold">{item.employee}</td><td>{item.type}</td><td>{item.date}</td><td>{item.note}</td><td className="font-bold">₹{item.amount.toLocaleString("en-IN")}</td><td><Pill tone={toneFor(item.status)}>{item.status}</Pill></td><td className="min-w-64 py-3 pr-4"><input value={comments[item.id] || ""} onChange={event => setComments(current => ({ ...current, [item.id]: event.target.value }))} className="input mb-2 py-2" placeholder="Comment" /><div className="flex gap-3"><button className="text-sm font-bold text-emerald-600" onClick={() => decide(item.id, "Approved")}>Approve</button><button className="text-sm font-bold text-rose-600" onClick={() => decide(item.id, "Rejected")}>Reject</button></div></td></tr>)}</tbody></table></div></>;
