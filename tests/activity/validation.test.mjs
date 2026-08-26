@@ -121,6 +121,15 @@ test("heartbeat validates state and battery", () => {
   assert.throws(() => parseHeartbeat({
     deviceId, agentVersion: "1", onlineStatus: "busy", batteryLevel: 10
   }), ActivityValidationError);
+  const parsed = parseHeartbeat({
+    deviceId, agentVersion: "1", onlineStatus: "online",
+    integrity: { observedAt: "2026-08-26T10:00:00.000Z", executableSha256: "a".repeat(64) }
+  });
+  assert.equal(parsed.integrity.executableSha256, "a".repeat(64));
+  assert.throws(() => parseHeartbeat({
+    deviceId, agentVersion: "1", onlineStatus: "online",
+    integrity: { observedAt: "2026-08-26T10:00:00.000Z", executableSha256: "not-a-digest" }
+  }), ActivityValidationError);
 });
 
 test("policy acknowledgement requires a matching hash shape", () => {

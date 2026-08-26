@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentIntegrity {
+    pub observed_at: String,
+    pub executable_sha256: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewSample {

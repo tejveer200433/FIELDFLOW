@@ -11,6 +11,7 @@ const summaries = readFileSync(join(root, "supabase/migrations/202607290002_acti
 const ingestionFix = readFileSync(join(root, "supabase/migrations/202607290003_activity_ingestion_conflict_fix.sql"), "utf8");
 const websiteActivity = readFileSync(join(root, "supabase/migrations/202607300001_website_domain_activity.sql"), "utf8");
 const screenshotControls = readFileSync(join(root, "supabase/migrations/202608090001_device_screenshot_controls.sql"), "utf8");
+const integrity = readFileSync(join(root, "supabase/migrations/202608260001_agent_integrity_detection.sql"), "utf8");
 const routePaths = [
   "devices/route.js",
   "devices/register/route.js",
@@ -21,6 +22,7 @@ const routePaths = [
   "ingest/route.js",
   "websites/ingest/route.js",
   "heartbeat/route.js",
+  "integrity/route.js",
   "team/route.js",
   "employees/route.js",
   "employees/[employeeId]/route.js",
@@ -137,6 +139,22 @@ test("website activity accepts hostnames only through an authenticated bounded R
   assert.match(websiteActivity, /active_session[\s\S]*employee_id=auth\.uid\(\)/);
   assert.match(websiteActivity, /on conflict\(employee_id,local_sample_id\) do nothing/);
   assert.match(websiteActivity, /revoke insert, update, delete on public\.website_activity_samples from authenticated/);
+});
+
+test("integrity evidence is bounded, server-correlated, and manager-readable only", () => {
+  const heartbeatRoute = readFileSync(join(root, "src/app/api/activity/heartbeat/route.js"), "utf8");
+  const integrityRoute = readFileSync(join(root, "src/app/api/activity/integrity/route.js"), "utf8");
+  assert.match(integrity, /create table public\.agent_integrity_reports/);
+  assert.match(integrity, /executable_sha256 text not null check/);
+  assert.match(integrity, /file path, file content, token, raw hardware identifier/i);
+  assert.match(integrity, /activity_record_integrity_report/);
+  assert.match(integrity, /clock_skew/);
+  assert.match(integrity, /agent_binary_changed/);
+  assert.match(integrity, /has_permission\('activity\.view_team'\)/);
+  assert.match(integrity, /has_permission\('activity\.view_all'\)/);
+  assert.match(heartbeatRoute, /activity_record_integrity_report/);
+  assert.match(integrityRoute, /requireActivitySession/);
+  assert.doesNotMatch(integrityRoute, /service_role/i);
 });
 
 test("device screenshot overrides are admin-controlled and enforced during registration", () => {

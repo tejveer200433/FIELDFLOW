@@ -133,15 +133,9 @@ export default function App() {
   const [now, setNow] = useState(Date.now());
   const handleAuthEvent = useCallback(async (event, level = "info") => {
     await agentLog(event, level);
-    if (event !== "auth_session_revoked") return;
-    trackingSessionId.current = null;
-    setAccount(null);
-    setPolicy(null);
-    setSession(null);
-    setScreenshotCaptureEnabled(false);
-    await invoke("set_input_collection_enabled", { enabled: false }).catch(() => {});
-    await invoke("set_agent_state", { key: "tracking_active", value: "false" }).catch(() => {});
-    await invoke("set_agent_state", { key: "tracking_session_id", value: "" }).catch(() => {});
+    if (event === "auth_refresh_rejected_retained") {
+      setError("FieldFlow could not refresh the saved session. Your login has been retained and the agent will retry automatically.");
+    }
   }, []);
   const sessionManager = useMemo(() => supabase
     ? createSessionManager({ supabase, onEvent: handleAuthEvent })
@@ -209,12 +203,14 @@ export default function App() {
     heartbeatInFlight.current = true;
     lastHeartbeatAttemptAt.current = attemptAt;
     try {
+      const integrity = await invoke("get_agent_integrity").catch(() => null);
       const result = await api.heartbeat({
         deviceId: targetDeviceId,
         trackingSessionId: targetSessionId || null,
         agentVersion: AGENT_VERSION,
         onlineStatus,
-        batteryLevel: null
+        batteryLevel: null,
+        integrity
       });
       setDevice(current => {
         if (!current || current.status === result.deviceStatus) return current;
@@ -400,11 +396,6 @@ export default function App() {
     } catch (initializationError) {
       await agentLog("login_failed", "warn");
       setError(initializationError.message || "The agent could not initialize.");
-      if (initializationError?.code === "AUTH_SESSION_REVOKED") {
-        await clearFieldFlowSession(supabase).catch(() => {});
-        setAccount(null);
-        return true;
-      }
       if (initializationError?.code === "AUTH_SESSION_MISSING") setAccount(null);
       return false;
     } finally {
@@ -446,10 +437,6 @@ export default function App() {
       } catch (sessionError) {
         if (cancelled) return;
         if (!sessionError.retryable) {
-          if (sessionError.code === "AUTH_SESSION_REVOKED") {
-            await clearFieldFlowSession(supabase).catch(() => {});
-            setError(sessionError.message);
-          }
           setLoading(false);
           return;
         }

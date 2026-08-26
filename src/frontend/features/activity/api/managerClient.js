@@ -42,6 +42,10 @@ export function getTeamActivitySummary(filters = {}) {
   return getTeamActivity(filters);
 }
 
+export function getIntegrityAlerts(limit = 20) {
+  return managerActivityRequest(`/integrity?limit=${Math.max(1, Math.min(100, Number(limit) || 20))}`);
+}
+
 export function getEmployeeActivityDetails(employeeId, {
   startDate,
   endDate,

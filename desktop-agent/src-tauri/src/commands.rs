@@ -1,10 +1,14 @@
+use std::{fs::File, io::Read};
+
+use chrono::Utc;
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager, State};
 
 use crate::{
     database::{self, Database},
     input, logging,
     models::{
-        CodingContext, DeviceIdentity, InputActivityCounts, NewCodingSample, NewSample,
+        AgentIntegrity, CodingContext, DeviceIdentity, InputActivityCounts, NewCodingSample, NewSample,
         PendingCodingSample, PendingSample, PendingScreenshotSample, PendingWebsiteSample,
         SyncResult,
     },
@@ -66,6 +70,27 @@ pub fn enforce_restricted_applications(
 #[tauri::command]
 pub fn get_device_identity() -> Result<DeviceIdentity, String> {
     platform::device_identity()
+}
+
+/// Produces a privacy-preserving fingerprint of the executable currently running the agent.
+/// The API stores only this SHA-256 digest, never an executable path or file contents.
+#[tauri::command]
+pub fn get_agent_integrity() -> Result<AgentIntegrity, String> {
+    let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+    let mut file = File::open(executable).map_err(|error| error.to_string())?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer).map_err(|error| error.to_string())?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&buffer[..read]);
+    }
+    Ok(AgentIntegrity {
+        observed_at: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        executable_sha256: hex::encode(digest.finalize()),
+    })
 }
 
 #[tauri::command]

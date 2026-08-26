@@ -20,6 +20,15 @@ export async function POST(request) {
       p_battery_level: body.batteryLevel
     });
     if (error) throwActivityDatabaseError(error);
+    if (body.integrity) {
+      const { error: integrityError } = await session.client.rpc("activity_record_integrity_report", {
+        p_device_id: body.deviceId,
+        p_tracking_session_id: body.trackingSessionId,
+        p_client_observed_at: body.integrity.observedAt,
+        p_executable_sha256: body.integrity.executableSha256
+      });
+      if (integrityError) throwActivityDatabaseError(integrityError);
+    }
     const [heartbeat, policy] = [rpcRow(data), await getActivePolicy(session.client, { required: false })];
     const { data: effectiveWebPolicy, error: effectiveWebPolicyError } = await session.client.rpc("web_access_effective_policy", {
       p_employee_id: session.profile.id,

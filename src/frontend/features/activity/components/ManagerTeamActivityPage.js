@@ -10,8 +10,9 @@ import TeamActivityLoadingState from "@/frontend/features/activity/components/Te
 import TeamActivitySummaryCards from "@/frontend/features/activity/components/TeamActivitySummaryCards";
 import TeamActivityTable from "@/frontend/features/activity/components/TeamActivityTable";
 import WebAccessAdministration from "@/frontend/features/activity/components/WebAccessAdministration";
+import IntegrityAlertsPanel from "@/frontend/features/activity/components/IntegrityAlertsPanel";
 import { hasAnyPermission } from "@/shared/permissions";
-import { getTeamActivity, getTeamMonitoringPolicy } from "@/frontend/features/activity/api/managerClient";
+import { getIntegrityAlerts, getTeamActivity, getTeamMonitoringPolicy } from "@/frontend/features/activity/api/managerClient";
 import { currentPageSummary, formatDateTime, todayUtc } from "@/frontend/features/activity/utils/teamFormatters";
 import { filterLoadedTeamRows, mergeTeamPages } from "@/frontend/features/activity/utils/teamStatus";
 
@@ -25,6 +26,7 @@ export default function ManagerTeamActivityPage() {
   const [rows, setRows] = useState([]);
   const [nextCursor, setNextCursor] = useState(null);
   const [policy, setPolicy] = useState(null);
+  const [integrityAlerts, setIntegrityAlerts] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -39,7 +41,7 @@ export default function ManagerTeamActivityPage() {
     if (append) setLoadingMore(true); else setLoading(true);
     setError(null);
     try {
-      const [teamResult, policyResult] = await Promise.allSettled([
+      const [teamResult, policyResult, integrityResult] = await Promise.allSettled([
         getTeamActivity({
           status: filters.status,
           date: filters.date,
@@ -47,7 +49,8 @@ export default function ManagerTeamActivityPage() {
           cursor,
           limit: 25
         }),
-        getTeamMonitoringPolicy()
+        getTeamMonitoringPolicy(),
+        getIntegrityAlerts(10)
       ]);
       if (!mounted.current) return;
       if (teamResult.status === "rejected") throw teamResult.reason;
@@ -56,6 +59,7 @@ export default function ManagerTeamActivityPage() {
       if (policyResult.status === "fulfilled") setPolicy(policyResult.value);
       else if (policyResult.reason?.code === "POLICY_NOT_CONFIGURED") setPolicy(null);
       else setError(policyResult.reason);
+      if (integrityResult.status === "fulfilled") setIntegrityAlerts(integrityResult.value.alerts || []);
       setLastRefreshed(new Date());
       if (teamResult.status === "fulfilled" && policyResult.status === "fulfilled") setError(null);
     } catch (requestError) {
@@ -113,6 +117,7 @@ export default function ManagerTeamActivityPage() {
     {error && <TeamActivityErrorState error={error} onRetry={() => load()} />}
     {loading && !rows.length ? <TeamActivityLoadingState /> : <>
       <TeamActivitySummaryCards summary={summary} />
+      <IntegrityAlertsPanel alerts={integrityAlerts} loading={loading} />
       <TeamActivityFilters filters={filters} disabled={loading || loadingMore} onChange={updateFilters} onReset={resetFilters} />
       <TeamActivityTable rows={visibleRows} hasFilters={hasFilters} nextCursor={nextCursor} loadingMore={loading || loadingMore} onLoadMore={() => load({ append: true, cursor: nextCursor })} onSelect={row => setSelectedId(row.employeeId)} />
     </>}

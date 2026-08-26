@@ -78,18 +78,14 @@ test("effective web access policy is refreshed independently for the registered 
   assert.equal(requestedUrl, "https://fieldflow.example/api/activity/web-access/policy?deviceId=device%20id%2F1");
 });
 
-test("API refreshes and retries once when the server rejects an expired token", async () => {
+test("an unexpected API 401 retries without rotating the refresh token", async () => {
   const oldSession = { access_token: "stale-secret", expires_at: 4_000_000_000 };
   const newSession = { access_token: "fresh-secret", expires_at: 4_000_000_000 };
   const authorizations = [];
-  let refreshCount = 0;
   const supabase = {
     auth: {
       getSession: async () => ({ data: { session: oldSession } }),
-      refreshSession: async () => {
-        refreshCount += 1;
-        return { data: { session: newSession } };
-      }
+      refreshSession: async () => ({ data: { session: newSession } })
     }
   };
   const api = createActivityApi({
@@ -117,11 +113,10 @@ test("API refreshes and retries once when the server rejects an expired token", 
   });
 
   assert.equal(result.acceptedCount, 1);
-  assert.equal(refreshCount, 1);
-  assert.deepEqual(authorizations, ["Bearer stale-secret", "Bearer fresh-secret"]);
+  assert.deepEqual(authorizations, ["Bearer stale-secret", "Bearer stale-secret"]);
 });
 
-test("API requests sign-in when a rejected token cannot be refreshed", async () => {
+test("API rejects an unauthorised request without clearing or rotating the saved session", async () => {
   const api = createActivityApi({
     baseUrl: "https://fieldflow.example",
     supabase: supabaseWith(
@@ -139,7 +134,7 @@ test("API requests sign-in when a rejected token cannot be refreshed", async () 
     error => {
       assert.equal(error.code, "AUTHENTICATION_REQUIRED");
       assert.equal(error.status, 401);
-      assert.equal(error.message, "Your saved FieldFlow login has expired or was revoked. Sign in again.");
+      assert.equal(error.message, "Authentication required.");
       assert.equal(error.message.includes("stale-secret"), false);
       return true;
     }

@@ -239,7 +239,17 @@ export function parseBlocklistOverrideReview(value) {
 }
 
 export function parseHeartbeat(value) {
-  const body = object(value, ["deviceId", "trackingSessionId", "agentVersion", "onlineStatus", "batteryLevel"]);
+  const body = object(value, ["deviceId", "trackingSessionId", "agentVersion", "onlineStatus", "batteryLevel", "integrity"]);
+  let integrity = null;
+  if (body.integrity !== undefined && body.integrity !== null) {
+    const report = object(body.integrity, ["observedAt", "executableSha256"], "integrity");
+    const executableSha256 = string(report.executableSha256, "integrity.executableSha256", { min: 64, max: 64 });
+    if (!/^[a-f0-9]{64}$/i.test(executableSha256)) fail("integrity.executableSha256 must be a SHA-256 hash.");
+    integrity = {
+      observedAt: timestamp(report.observedAt, "integrity.observedAt"),
+      executableSha256: executableSha256.toLowerCase()
+    };
+  }
   return {
     deviceId: uuid(body.deviceId, "deviceId"),
     trackingSessionId: uuid(body.trackingSessionId, "trackingSessionId", true),
@@ -247,7 +257,8 @@ export function parseHeartbeat(value) {
     onlineStatus: enumeration(body.onlineStatus, "onlineStatus", ["online", "idle", "offline", "error"]),
     batteryLevel: body.batteryLevel === undefined || body.batteryLevel === null
       ? null
-      : integer(body.batteryLevel, "batteryLevel", 0, 100)
+      : integer(body.batteryLevel, "batteryLevel", 0, 100),
+    integrity
   };
 }
 

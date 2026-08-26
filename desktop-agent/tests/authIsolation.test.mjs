@@ -13,6 +13,14 @@ test("desktop sign-out never revokes the employee's other FieldFlow sessions", (
   assert.doesNotMatch(app, /supabase\.auth\.signOut\(\)/);
 });
 
+test("only an explicit employee sign-out clears the FieldFlow session", () => {
+  const beforeManualSignOut = app.slice(0, app.indexOf("async function signOut()"));
+  const manualSignOut = app.slice(app.indexOf("async function signOut()"));
+  assert.doesNotMatch(beforeManualSignOut, /clearFieldFlowSession\(supabase\)/);
+  assert.match(manualSignOut, /clearFieldFlowSession\(supabase\)/);
+  assert.doesNotMatch(app, /AUTH_SESSION_REVOKED/);
+});
+
 test("auth operations use a cross-context Web Lock with a serialized fallback", () => {
   assert.match(auth, /navigator\?\.locks\?\.request/);
   assert.match(auth, /fieldflow:\$\{name\}/);

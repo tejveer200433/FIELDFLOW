@@ -175,6 +175,7 @@ pub fn run() {
             commands::get_active_application,
             commands::enforce_restricted_applications,
             commands::get_device_identity,
+            commands::get_agent_integrity,
             commands::get_coding_context,
             commands::enqueue_sample,
             commands::pending_samples,

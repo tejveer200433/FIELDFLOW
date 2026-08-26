@@ -101,7 +101,7 @@ test("temporary auth network failure is retryable and never calls local sign-out
   assert.ok(events.includes("auth_refresh_network_delayed"));
 });
 
-test("a permanently rejected refresh requests sign-in without exposing token values", async () => {
+test("a permanently rejected refresh retains the login and retries without exposing token values", async () => {
   const events = [];
   const manager = createSessionManager({
     supabase: client({
@@ -115,13 +115,13 @@ test("a permanently rejected refresh requests sign-in without exposing token val
   });
 
   await assert.rejects(manager.getValidSession(), error => {
-    assert.equal(error.code, "AUTH_SESSION_REVOKED");
-    assert.equal(error.retryable, false);
+    assert.equal(error.code, "AUTH_REFRESH_RETRYABLE");
+    assert.equal(error.retryable, true);
     assert.equal(error.message.includes("access-secret"), false);
     assert.equal(error.message.includes("refresh-secret"), false);
     return true;
   });
-  assert.ok(events.includes("auth_session_revoked"));
+  assert.ok(events.includes("auth_refresh_rejected_retained"));
 });
 
 test("a long-suspend network interruption is retried and recovers without another sign-in", async () => {

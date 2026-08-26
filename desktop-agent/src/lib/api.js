@@ -55,7 +55,10 @@ export function createActivityApi({ baseUrl, supabase, sessionManager, fetchImpl
       }
       if (response.status === 401 && !retriedAuthentication) {
         retriedAuthentication = true;
-        accessToken = await sessionToken({ forceRefresh: true, rejectedAccessToken: accessToken });
+        // A policy or audit endpoint can reject an otherwise current token. Do
+        // not rotate the refresh token solely because of that response; the
+        // session manager refreshes normally when the token is near expiry.
+        accessToken = await sessionToken({ rejectedAccessToken: accessToken });
         continue;
       }
       const payload = await response.json().catch(() => null);
