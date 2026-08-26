@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Download, Paperclip, Send } from "lucide-react";
 import { apiJson, authenticatedFetch } from "@/frontend/lib/apiClient";
+import TaskWorkEvidence from "@/frontend/features/tasks/components/TaskWorkEvidence";
 
 function formatBytes(value) {
   const bytes = Number(value) || 0;
@@ -83,6 +84,7 @@ export default function TaskCollaboration({ taskId }) {
   }
 
   return <section className="mt-6 space-y-5 border-t border-slate-200 pt-5">
+    <TaskWorkEvidence taskId={taskId} />
     <div><h3 className="font-bold">Comments</h3><div className="mt-3 max-h-52 space-y-3 overflow-y-auto">{comments.map(comment => <article key={comment.id} className="rounded-xl bg-slate-50 p-3 text-sm"><div className="flex justify-between gap-3"><strong>{comment.author}</strong><span className="text-xs text-slate-500">{new Date(comment.createdAt).toLocaleString()}</span></div><p className="mt-1 whitespace-pre-wrap text-slate-700">{comment.body}</p></article>)}{!comments.length && <p className="text-sm text-slate-500">No comments yet.</p>}</div><form onSubmit={addComment} className="mt-3 flex gap-2"><input name="comment" maxLength={3000} className="input" placeholder="Add a task comment" /><button disabled={busy} className="btn-primary shrink-0"><Send className="h-4 w-4" />Send</button></form></div>
     <div><div className="flex items-center justify-between gap-3"><h3 className="font-bold">Attachments</h3><label className="btn-secondary cursor-pointer"><Paperclip className="h-4 w-4" />Attach file<input ref={fileRef} disabled={busy} onChange={upload} type="file" className="sr-only" accept="image/jpeg,image/png,image/webp,application/pdf,text/plain,application/zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" /></label></div><div className="mt-3 space-y-2">{attachments.map(attachment => <button type="button" disabled={busy} onClick={() => download(attachment)} key={attachment.id} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 p-3 text-left text-sm hover:border-violet-200"><Download className="h-4 w-4 text-violet-600" /><span className="min-w-0 flex-1 truncate font-medium">{attachment.name}</span><span className="text-xs text-slate-500">{formatBytes(attachment.size)}</span></button>)}{!attachments.length && <p className="text-sm text-slate-500">No attachments yet.</p>}</div></div>
     {message && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{message}</p>}
