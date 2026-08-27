@@ -48,6 +48,7 @@ export default function RoleShell({ role, children }) {
   const [query, setQuery] = useState("");
   const isManagerDashboard = role === "manager" && pathname === "/manager";
   const isAdminDashboard = role === "admin" && pathname === "/admin";
+  const isAdminPortal = role === "admin";
 
   if (!access) return <WorkspaceLoadingShell />;
 
@@ -74,31 +75,31 @@ export default function RoleShell({ role, children }) {
     setQuery("");
   }
 
-  const aside = <aside className={`flex h-full flex-col bg-[#06172d] p-4 text-white transition-all ${collapsed ? "w-20" : "w-[245px]"}`}>
+  const aside = <aside className={`flex h-full flex-col p-4 transition-all ${isAdminPortal ? "border-r border-[#e7e9f4] bg-white/80 text-[#101936] backdrop-blur-2xl" : "bg-[#06172d] text-white"} ${collapsed ? "w-20" : "w-[245px]"}`}>
     <div className="flex items-center gap-3 px-1 py-2">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-600 shadow-[0_8px_20px_rgba(37,99,235,0.35)]"><Zap className="h-5 w-5" /></span>
-      {!collapsed && <div className="min-w-0"><p className="text-base font-extrabold leading-none">FieldFlow</p><p className="mt-1 truncate text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-400">{dynamicRoleName}</p></div>}
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#4d5cff] text-white shadow-[0_10px_25px_rgba(77,92,255,0.22)]"><Zap className="h-5 w-5" /></span>
+      {!collapsed && <div className="min-w-0"><p className="text-base font-extrabold leading-none">FieldFlow</p><p className={`mt-1 truncate text-[9px] font-semibold uppercase tracking-[0.16em] ${isAdminPortal ? "text-[#68718b]" : "text-slate-400"}`}>{dynamicRoleName}</p></div>}
       <button aria-label="Close menu" className="ml-auto lg:hidden" onClick={() => setMobileOpen(false)}><X /></button>
     </div>
     <nav className="mt-6 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
       {visibleNav.map(([slug, label, Icon]) => {
         const href = `/${role}${slug ? `/${slug}` : ""}`;
         const active = pathname === href;
-        return <Link title={collapsed ? label : undefined} onClick={() => setMobileOpen(false)} key={href} href={href} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${active ? "bg-blue-600 text-white shadow-[0_8px_20px_rgba(37,99,235,0.24)]" : "text-slate-300 hover:bg-white/5 hover:text-white"}`}><Icon className={`h-[18px] w-[18px] shrink-0 ${active ? "text-white" : "text-slate-400"}`} />{!collapsed && <span>{label}</span>}</Link>;
+        return <Link title={collapsed ? label : undefined} onClick={() => setMobileOpen(false)} key={href} href={href} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${active ? "bg-[#eeeeff] text-[#4d5cff] shadow-none" : isAdminPortal ? "text-[#626b85] hover:translate-x-1 hover:bg-[#f3f3ff] hover:text-[#4d5cff]" : "text-slate-300 hover:bg-white/5 hover:text-white"}`}><Icon className={`h-[18px] w-[18px] shrink-0 ${active ? "text-[#4d5cff]" : isAdminPortal ? "text-[#68718b]" : "text-slate-400"}`} />{!collapsed && <span>{label}</span>}</Link>;
       })}
     </nav>
-    <div className="mt-auto border-t border-white/10 pt-3">
-      {!collapsed && <div className="mb-2 flex items-center gap-3 rounded-xl px-2 py-2"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border-2 border-slate-500 bg-slate-700 text-xs font-extrabold">{displayName.charAt(0).toUpperCase()}</span><span className="min-w-0 flex-1"><strong className="block truncate text-xs">{displayName}</strong><small className="mt-0.5 block truncate text-[9px] text-slate-400">{dynamicRoleName}</small></span><button aria-label="Sign out" onClick={logout} className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"><LogOut className="h-4 w-4" /></button></div>}
-      <button onClick={() => setCollapsed(value => !value)} className="hidden w-full items-center gap-3 rounded-lg px-3 py-2 text-xs text-slate-500 hover:bg-white/5 hover:text-white lg:flex"><ChevronLeft className={`h-4 w-4 transition ${collapsed ? "rotate-180" : ""}`} />{!collapsed && "Collapse"}</button>
-      {collapsed && <button aria-label="Sign out" onClick={logout} className="mt-1 flex w-full justify-center rounded-lg px-3 py-2 text-slate-400 hover:bg-white/10 hover:text-white"><LogOut className="h-4 w-4" /></button>}
+    <div className={`mt-auto pt-3 ${isAdminPortal ? "border-t border-[#e7e9f4]" : "border-t border-white/10"}`}>
+      {!collapsed && <div className="mb-2 flex items-center gap-3 rounded-xl px-2 py-2"><span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-extrabold ${isAdminPortal ? "bg-[#e6e9ff] text-[#4d5cff]" : "border-2 border-slate-500 bg-slate-700"}`}>{displayName.charAt(0).toUpperCase()}</span><span className="min-w-0 flex-1"><strong className="block truncate text-xs">{displayName}</strong><small className={`mt-0.5 block truncate text-[9px] ${isAdminPortal ? "text-[#68718b]" : "text-slate-400"}`}>{dynamicRoleName}</small></span><button aria-label="Sign out" onClick={logout} className={`rounded-lg p-1.5 transition ${isAdminPortal ? "text-[#68718b] hover:bg-[#f3f3ff] hover:text-[#4d5cff]" : "text-slate-400 hover:bg-white/10 hover:text-white"}`}><LogOut className="h-4 w-4" /></button></div>}
+      <button onClick={() => setCollapsed(value => !value)} className={`hidden w-full items-center gap-3 rounded-lg px-3 py-2 text-xs lg:flex ${isAdminPortal ? "text-[#68718b] hover:bg-[#f3f3ff] hover:text-[#4d5cff]" : "text-slate-500 hover:bg-white/5 hover:text-white"}`}><ChevronLeft className={`h-4 w-4 transition ${collapsed ? "rotate-180" : ""}`} />{!collapsed && "Collapse"}</button>
+      {collapsed && <button aria-label="Sign out" onClick={logout} className={`mt-1 flex w-full justify-center rounded-lg px-3 py-2 ${isAdminPortal ? "text-[#68718b] hover:bg-[#f3f3ff] hover:text-[#4d5cff]" : "text-slate-400 hover:bg-white/10 hover:text-white"}`}><LogOut className="h-4 w-4" /></button>}
     </div>
   </aside>;
 
-  return <AccessProvider access={access}><div className="min-h-screen bg-[#edf3f9] lg:flex lg:p-3">
+  return <AccessProvider access={access}><div className={`min-h-screen lg:flex lg:p-3 ${isAdminPortal ? "bg-[#f7f8ff]" : "bg-[#edf3f9]"}`}>
     <div className={`fixed inset-y-0 left-0 z-[900] overflow-hidden transition-transform lg:sticky lg:top-3 lg:h-[calc(100vh-1.5rem)] lg:rounded-l-2xl ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}>{aside}</div>
     {mobileOpen && <button aria-label="Close navigation" onClick={() => setMobileOpen(false)} className="fixed inset-0 z-[800] bg-slate-950/40 lg:hidden" />}
-    <div className="min-w-0 flex-1 bg-[#f8fafc] lg:rounded-r-2xl lg:shadow-[0_10px_35px_rgba(15,23,42,0.08)]">
-      <header className={`sticky top-0 z-[700] h-16 items-center gap-4 border-b border-slate-200 bg-white/95 px-5 backdrop-blur sm:px-8 ${isManagerDashboard ? "flex lg:hidden" : "flex"}`}>
+    <div className={`min-w-0 flex-1 lg:rounded-r-2xl ${isAdminPortal ? "bg-[linear-gradient(135deg,#fbfbff,#f2f4ff)] shadow-[0_10px_35px_rgba(77,92,255,0.06)]" : "bg-[#f8fafc] lg:shadow-[0_10px_35px_rgba(15,23,42,0.08)]"}`}>
+      <header className={`sticky top-0 z-[700] h-16 items-center gap-4 border-b px-5 backdrop-blur sm:px-8 ${isAdminPortal ? "border-[#e7e9f4] bg-white/72" : "border-slate-200 bg-white/95"} ${isManagerDashboard ? "flex lg:hidden" : "flex"}`}>
         <button aria-label="Open menu" onClick={() => setMobileOpen(true)} className="icon-button lg:hidden"><Menu className="h-5 w-5" /></button>
         {isAdminDashboard && <div className="hidden min-w-[230px] xl:block"><h1 className="text-xl font-black tracking-tight text-slate-950">Live Operations</h1><p className="mt-0.5 text-[11px] text-slate-500">Real-time workforce and site coverage</p></div>}
         <form onSubmit={search} className={`relative w-full ${isAdminDashboard ? "max-w-sm" : "max-w-xl"}`}><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} className="input py-3 pl-12" placeholder={isAdminDashboard ? "Search people, jobs, sites…" : "Search users, tasks, reports…"} aria-label="Search workspace" /></form>

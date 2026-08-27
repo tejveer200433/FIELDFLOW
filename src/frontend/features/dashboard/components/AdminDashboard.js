@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight, BriefcaseBusiness, CheckCircle2, MapPin, Navigation, RefreshCw, ShieldAlert, UserRoundCheck, WifiOff } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import LiveTeamMap from "@/frontend/components/maps/LiveTeamMap";
+import MonitoringSystemPulse from "@/frontend/features/activity/components/MonitoringSystemPulse";
 import { apiJson } from "@/frontend/lib/apiClient";
 import { hasAnyPermission, PERMISSIONS } from "@/shared/permissions";
 
@@ -31,9 +32,9 @@ function statusStyle(status) {
 function Metric({ icon: Icon, label, value, detail, tone, change }) {
   const iconTone = { green: "bg-emerald-500", blue: "bg-blue-600", cyan: "bg-cyan-500", gray: "bg-slate-400", red: "bg-rose-500" }[tone];
   const changeTone = tone === "red" || tone === "gray" ? "text-rose-500" : "text-emerald-600";
-  return <article className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-[0_3px_12px_rgba(15,23,42,0.035)]">
+  return <article className="group flex min-w-0 items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-[0_3px_12px_rgba(15,23,42,0.035)] transition duration-200 hover:-translate-y-1 hover:border-blue-200 hover:shadow-md">
     <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-full text-white ${iconTone}`}><Icon className="h-5 w-5" /></span>
-    <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-slate-600">{label}</p><div className="mt-0.5 flex items-end gap-2"><strong className="text-2xl font-black leading-none tracking-tight text-slate-950">{value}</strong><span className={`text-[10px] font-bold ${changeTone}`}>{change}</span></div><p className="mt-1 truncate text-[10px] text-slate-400">{detail}</p></div>
+    <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-slate-600">{label}</p><div className="mt-0.5 flex items-end gap-2"><strong className="text-2xl font-black leading-none tracking-tight text-slate-950">{value}</strong><span className={`text-[10px] font-bold ${changeTone}`}>{change}</span></div><p className="mt-1 truncate text-[10px] text-slate-400 transition group-hover:text-slate-600">{detail}</p></div>
   </article>;
 }
 
@@ -122,8 +123,16 @@ export default function AdminDashboard({ access }) {
   const coverage = totalEmployees ? Math.round(onDuty / totalEmployees * 100) : 0;
   const taskCoverage = snapshot.tasks.length ? Math.round(data.completedToday.length / snapshot.tasks.length * 100) : 0;
 
-  return <div className="mx-auto max-w-[1600px] space-y-4">
-    <div className="flex items-center justify-between gap-4 lg:hidden"><div><h1 className="text-2xl font-black tracking-tight text-slate-950">Live Operations</h1><p className="text-xs text-slate-500">Real-time workforce and site coverage</p></div><button aria-label="Refresh dashboard" onClick={() => setLoadVersion(version => version + 1)} className="grid h-10 w-10 place-items-center rounded-lg bg-blue-600 text-white"><RefreshCw className="h-4 w-4" /></button></div>
+  return <div className="mx-auto max-w-[1600px] space-y-5">
+    <header className="grid gap-5 border-b border-slate-200 pb-5 lg:grid-cols-[minmax(0,1fr)_290px] lg:items-end">
+      <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">Operations · live</p><h1 className="mt-2 text-2xl font-extrabold text-slate-950">See what needs you now.</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Live workforce coverage, site activity, dispatch, and urgent decisions in one operational view.</p></div>
+      <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end"><span className="text-xs text-slate-500">Last updated {lastRefreshed ? lastRefreshed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "connecting"}</span><button aria-label="Refresh dashboard" title="Refresh live operations" onClick={() => setLoadVersion(version => version + 1)} className="icon-button h-9 w-9"><RefreshCw className="h-4 w-4" /><span className="sr-only">Refresh</span></button></div>
+    </header>
+
+    <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_290px]">
+      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-bold text-slate-950">Operations briefing</p><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{data.alerts.length ? `${data.alerts.length} item${data.alerts.length === 1 ? "" : "s"} may need a decision. Dispatch and site coverage are shown below.` : "No urgent operational alerts are currently surfaced. Coverage and live work remain available below."}</p><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => router.push("/admin/field-tasks")} className="btn-secondary">Review dispatch <ArrowRight className="h-4 w-4" /></button><button type="button" onClick={() => router.push("/admin/map")} className="btn-secondary">Open live map <MapPin className="h-4 w-4" /></button></div></div>
+      <MonitoringSystemPulse emphasis={data.alerts.length ? "attention" : "healthy"} />
+    </section>
 
     {failedServices.length > 0 && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-800"><span><strong>Some services could not be loaded:</strong> {failedServices.join(", ")}. Unavailable totals are shown as dashes.</span><button onClick={() => setLoadVersion(version => version + 1)} className="rounded-lg border border-rose-200 bg-white px-3 py-2 font-bold">Retry</button></div>}
 
