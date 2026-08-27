@@ -40,7 +40,7 @@ export async function GET(request) {
     if (!employeeIds.length) return activitySuccess({ employees: [], pagination: { limit: filters.limit, nextCursor: null } });
 
     const summaryDate = filters.date || new Date().toISOString().slice(0, 10);
-    const [devicesResult, sessionsResult, heartbeatsResult, summariesResult, samplesResult, policy] = await Promise.all([
+    const [devicesResult, sessionsResult, summariesResult, policy] = await Promise.all([
       session.client.from("employee_devices")
         .select("id,employee_id,status,last_seen_at").in("employee_id", employeeIds)
         .order("last_seen_at", { ascending: false, nullsFirst: false }),
@@ -48,18 +48,34 @@ export async function GET(request) {
         .select("id,employee_id,device_id,started_at,ended_at,status")
         .in("employee_id", employeeIds).eq("status", "active").is("ended_at", null)
         .order("started_at", { ascending: false }),
-      session.client.from("agent_heartbeats")
-        .select("employee_id,device_id,tracking_session_id,recorded_at,online_status")
-        .in("employee_id", employeeIds).order("recorded_at", { ascending: false }).limit(Math.min(2000, employeeIds.length * 10)),
       session.client.from("activity_daily_summaries")
         .select("employee_id,tracked_seconds,active_seconds,idle_seconds,activity_percentage")
         .in("employee_id", employeeIds).eq("summary_date", summaryDate),
-      session.client.from("activity_samples")
-        .select("employee_id,tracking_session_id,captured_at,idle_seconds,active_application")
-        .in("employee_id", employeeIds).order("captured_at", { ascending: false }).limit(Math.min(2000, employeeIds.length * 10)),
       getActivePolicy(session.client, { required: false })
     ]);
-    const failure = [devicesResult, sessionsResult, heartbeatsResult, summariesResult, samplesResult].find(result => result.error);
+    const initialFailure = [devicesResult, sessionsResult, summariesResult].find(result => result.error);
+    if (initialFailure) throw initialFailure.error;
+
+    // Heartbeats/samples are only ever consulted for employees with an active
+    // session (see firstMatchingSession below), so scope those queries to the
+    // active session ids rather than scanning full activity history for every
+    // employee in view - that unbounded scan was hitting the statement timeout.
+    const activeSessionIds = (sessionsResult.data || []).map(row => row.id);
+    const [heartbeatsResult, samplesResult] = await Promise.all([
+      activeSessionIds.length
+        ? session.client.from("agent_heartbeats")
+            .select("employee_id,device_id,tracking_session_id,recorded_at,online_status")
+            .in("tracking_session_id", activeSessionIds).order("recorded_at", { ascending: false })
+            .limit(Math.min(2000, activeSessionIds.length * 10))
+        : Promise.resolve({ data: [], error: null }),
+      activeSessionIds.length
+        ? session.client.from("activity_samples")
+            .select("employee_id,tracking_session_id,captured_at,idle_seconds,active_application")
+            .in("tracking_session_id", activeSessionIds).order("captured_at", { ascending: false })
+            .limit(Math.min(2000, activeSessionIds.length * 10))
+        : Promise.resolve({ data: [], error: null })
+    ]);
+    const failure = [heartbeatsResult, samplesResult].find(result => result.error);
     if (failure) throw failure.error;
 
     const devices = firstByEmployee(devicesResult.data);
