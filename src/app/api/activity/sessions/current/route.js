@@ -1,5 +1,5 @@
 import { requireActivitySession, ACTIVITY_PERMISSIONS } from "@/backend/activity/auth";
-import { getActivePolicy, mapDevice, mapPolicy, mapSession } from "@/backend/activity/data";
+import { readDeviceQuery, getActivePolicy, mapDevice, mapPolicy, mapSession } from "@/backend/activity/data";
 import { enforceActivityRateLimit } from "@/backend/activity/rateLimit";
 import { activityFailure, activitySuccess } from "@/backend/activity/responses";
 
@@ -19,9 +19,9 @@ export async function GET(request) {
     if (!sessionResult.data) {
       return activitySuccess({ active: false, session: null, policy: mapPolicy(policy), serverTime: new Date().toISOString() });
     }
-    const { data: device, error } = await session.client.from("employee_devices")
-      .select("id,employee_id,device_name,platform,operating_system_version,agent_version,status,registered_at,last_seen_at,revoked_at")
-      .eq("id", sessionResult.data.device_id).single();
+    const { data: device, error } = await readDeviceQuery(deviceSelect => session.client.from("employee_devices")
+      .select(deviceSelect)
+      .eq("id", sessionResult.data.device_id).eq("employee_id", session.profile.id).single());
     if (error) throw error;
     return activitySuccess({
       active: true,

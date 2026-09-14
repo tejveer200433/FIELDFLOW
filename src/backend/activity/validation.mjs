@@ -405,6 +405,11 @@ export function parseScreenshotSignedUrlQuery(searchParams) {
   return { path };
 }
 
+export function parseScreenshotRequest(value) {
+  const body = object(value, ["deviceId"]);
+  return { deviceId: uuid(body.deviceId, "deviceId") };
+}
+
 export function parseAuditFilters(searchParams) {
   const query = queryObject(searchParams, ["limit", "cursor"]);
   return pagination(query, 100);

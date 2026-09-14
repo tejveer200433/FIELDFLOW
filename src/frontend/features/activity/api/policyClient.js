@@ -62,6 +62,14 @@ export function deleteActivityScreenshots(screenshotIds) {
   });
 }
 
+export function requestDeviceScreenshot(deviceId) {
+  return policyRequest("/screenshots/requests", { method: "POST", body: JSON.stringify({ deviceId }) });
+}
+
+export function getDeviceScreenshotRequest(deviceId) {
+  return policyRequest(`/screenshots/requests?deviceId=${encodeURIComponent(deviceId)}`);
+}
+
 export function getBlocklistOverrideRequests() {
   return policyRequest("/blocklist-requests").then(payload => payload.data.requests);
 }

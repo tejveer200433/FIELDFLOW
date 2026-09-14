@@ -1,6 +1,9 @@
 import { ActivityError } from "@/backend/activity/responses";
+import { readCompatibleDeviceQuery } from "@/backend/activity/deviceSchema.mjs";
 
 export const policySelect = "id,policy_version,is_active,tracking_enabled,idle_threshold_seconds,sample_interval_seconds,upload_interval_seconds,offline_sync_limit_seconds,heartbeat_interval_seconds,collect_application_names,require_acknowledgement,retention_days,website_blocking_enabled,blocked_domains,collect_coding_project_names,collect_screenshots,screenshot_interval_seconds,screenshot_excluded_apps,created_at,updated_at";
+export const deviceSelect = "id,employee_id,device_name,platform,operating_system_version,agent_version,status,registered_at,last_seen_at,revoked_at";
+export const readDeviceQuery = buildQuery => readCompatibleDeviceQuery(buildQuery, deviceSelect);
 
 export function mapPolicy(row) {
   if (!row) return null;
@@ -106,9 +109,9 @@ export async function getAcknowledgement(client, employeeId, policy) {
 }
 
 export async function requireOwnedDevice(client, employeeId, deviceId, { active = false } = {}) {
-  const { data, error } = await client.from("employee_devices")
-    .select("id,employee_id,device_name,platform,operating_system_version,agent_version,status,registered_at,last_seen_at,revoked_at")
-    .eq("id", deviceId).eq("employee_id", employeeId).maybeSingle();
+  const { data, error } = await readDeviceQuery(fields => client.from("employee_devices")
+    .select(fields)
+    .eq("id", deviceId).eq("employee_id", employeeId).maybeSingle());
   if (error) throw error;
   if (!data) throw new ActivityError("DEVICE_NOT_FOUND", "The device was not found for this employee.", 404);
   if (active && data.status !== "active") {

@@ -1,5 +1,5 @@
 import { assertActivityEmployee, requireActivitySession, resolveActivityScope, ACTIVITY_PERMISSIONS } from "@/backend/activity/auth";
-import { getActivePolicy, getActivityProfiles, mapDevice, mapScreenshot, mapSession } from "@/backend/activity/data";
+import { readDeviceQuery, getActivePolicy, getActivityProfiles, mapDevice, mapScreenshot, mapSession } from "@/backend/activity/data";
 import { enforceActivityRateLimit } from "@/backend/activity/rateLimit";
 import { ActivityError, activityFailure, activitySuccess } from "@/backend/activity/responses";
 import { deriveActivityStatus } from "@/backend/activity/status.mjs";
@@ -31,9 +31,9 @@ export async function GET(request, { params }) {
     const endTime = `${endDate}T23:59:59.999Z`;
     const today = new Date().toISOString().slice(0, 10);
     const [devicesResult, sessionsResult, activeSessionResult, summariesResult, heartbeatsResult, usageResult, screenshotsResult, policy] = await Promise.all([
-      session.client.from("employee_devices")
-        .select("id,employee_id,device_name,platform,operating_system_version,agent_version,status,registered_at,last_seen_at,revoked_at")
-        .eq("employee_id", employeeId).order("registered_at", { ascending: false }),
+      readDeviceQuery(deviceSelect => session.client.from("employee_devices")
+        .select(deviceSelect)
+        .eq("employee_id", employeeId).order("registered_at", { ascending: false })),
       session.client.from("tracking_sessions")
         .select("id,employee_id,device_id,project_id,task_id,started_at,ended_at,status,start_source,end_source")
         .eq("employee_id", employeeId).gte("started_at", startTime).lte("started_at", endTime)
