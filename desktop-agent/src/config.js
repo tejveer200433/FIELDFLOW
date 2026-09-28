@@ -20,6 +20,7 @@ export function readConfiguration(environment = import.meta.env) {
     supabaseUrl,
     supabaseAnonKey,
     agentVersion: environment.VITE_AGENT_VERSION || DEFAULT_AGENT_VERSION,
+    agentMode: environment.VITE_AGENT_MODE === "corporate" ? "corporate" : "standard",
     debug: environment.VITE_DEBUG_LOGGING === "true",
     updatesEnabled: environment.VITE_AGENT_UPDATES_ENABLED === "true",
     valid: missing.length === 0,

@@ -10,6 +10,8 @@ test("web access policy refreshes cannot reset core sync timers", async () => {
 
   assert.ok(coreTimerEffect, "core timer effect should remain identifiable");
   assert.doesNotMatch(coreTimerEffect[1], /webAccessPolicy/);
+  assert.doesNotMatch(source, /setInterval\(refreshWebAccessPolicy, 10000\)/);
+  assert.match(source, /heartbeatResult\?\.monitoringPolicy/);
   assert.match(source, /const applicationTimer = window\.setInterval\(enforceApplications, 2000\);/);
   assert.match(source, /\}, \[account, api, deviceId, webAccessPolicy\]\);/);
 });

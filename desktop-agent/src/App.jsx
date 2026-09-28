@@ -67,7 +67,7 @@ function Login({ supabase, onSignedIn, notice = "" }) {
   );
 }
 
-function PolicyConsent({ policy, onAccept, onSignOut }) {
+function PolicyConsent({ policy, onAccept, onSignOut, allowSignOut = true }) {
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const text = policyAcknowledgementText(policy);
@@ -102,7 +102,7 @@ function PolicyConsent({ policy, onAccept, onSignOut }) {
           I understand and acknowledge policy version {policy.policyVersion}.
         </label>
         <div className="actions">
-          <button className="secondary" onClick={onSignOut}>Sign out</button>
+          {allowSignOut && <button className="secondary" onClick={onSignOut}>Sign out</button>}
           <button disabled={!accepted || busy} onClick={accept}>{busy ? "Saving…" : "Accept policy"}</button>
         </div>
       </section>
@@ -144,6 +144,9 @@ export default function App() {
     ? createActivityApi({ baseUrl: config.fieldFlowUrl, supabase, sessionManager })
     : null, [sessionManager, supabase]);
   const deviceId = device?.deviceId;
+  const corporateMode = device ? device.agentMode === "corporate" : config.agentMode === "corporate";
+  const employeeSignOutAllowed = !corporateMode && device?.employeeSignOutAllowed !== false;
+  const employeeQuitAllowed = !corporateMode && device?.employeeQuitAllowed !== false;
   const timers = useRef([]);
   const sampling = useRef(false);
   const screenshotting = useRef(false);
@@ -212,10 +215,20 @@ export default function App() {
         batteryLevel: null,
         integrity
       });
-      setDevice(current => {
-        if (!current || current.status === result.deviceStatus) return current;
-        return { ...current, status: result.deviceStatus };
-      });
+      setDevice(current => current ? {
+        ...current,
+        status: result.deviceStatus,
+        agentMode: result.agentManagement?.mode || current.agentMode || "standard",
+        employeeSignOutAllowed: result.agentManagement?.employeeSignOutAllowed !== false,
+        employeeQuitAllowed: result.agentManagement?.employeeQuitAllowed !== false,
+        autoStartTracking: Boolean(result.agentManagement?.autoStartTracking),
+        recoveryEnabled: result.agentManagement?.recoveryEnabled !== false,
+        managedAt: result.agentManagement?.managedAt || current.managedAt || null
+      } : current);
+      if (result.agentManagement?.autoStartTracking) {
+        trackingDesired.current = true;
+        await invoke("set_agent_state", { key: "tracking_desired", value: "true" }).catch(() => null);
+      }
       setLastHeartbeat(new Date());
       setScreenshotCaptureEnabled(Boolean(result.collectScreenshots));
       const effectiveWebPolicy = result.webAccessPolicy?.ruleId
@@ -328,7 +341,7 @@ export default function App() {
       const authoritativeDevice = registeredDevice;
       setDevice(authoritativeDevice);
       const desiredState = await invoke("get_agent_state", { key: "tracking_desired" });
-      trackingDesired.current = desiredState !== "false";
+      trackingDesired.current = authoritativeDevice.autoStartTracking || desiredState !== "false";
 
       const saveLocalSession = async activeSession => {
         await invoke("set_agent_state", { key: "tracking_active", value: "true" });
@@ -483,11 +496,22 @@ export default function App() {
     window.addEventListener("offline", offlineHandler);
     document.addEventListener("visibilitychange", visibilityHandler);
     const unlisteners = Promise.all([
-      listen("agent-start-requested", () => { if (!session) document.getElementById("start-button")?.click(); }),
-      listen("agent-stop-requested", () => { if (session) document.getElementById("stop-button")?.click(); }),
+      listen("agent-start-requested", () => { if (!corporateMode && !session) document.getElementById("start-button")?.click(); }),
+      listen("agent-stop-requested", () => { if (!corporateMode && session) document.getElementById("stop-button")?.click(); }),
       listen("agent-sync-requested", () => { document.getElementById("sync-button")?.click(); }),
-      listen("agent-sign-out-requested", () => { document.getElementById("sign-out-button")?.click(); }),
+      listen("agent-sign-out-requested", () => {
+        if (employeeSignOutAllowed) document.getElementById("sign-out-button")?.click();
+        else {
+          setError("This company-managed device can only be signed out by an administrator.");
+          if (corporateMode) reportAgentEvent("signout_blocked", { source: "tray_menu" });
+        }
+      }),
       listen("agent-quit-requested", async () => {
+        if (!employeeQuitAllowed) {
+          setError("Corporate Agent recovery is managed by your administrator and cannot be quit locally.");
+          if (corporateMode) reportAgentEvent("quit_blocked", { source: "tray_menu" });
+          return;
+        }
         if (window.confirm(session ? "Stop tracking and quit FieldFlow Activity Agent?" : "Quit FieldFlow Activity Agent?")) {
           if (session) await stopTracking();
           await invoke("quit_agent");
@@ -688,7 +712,7 @@ export default function App() {
     }, 5000));
     timers.current.push(window.setInterval(async () => {
       const heartbeatIdleSeconds = await invoke("get_idle_seconds").catch(() => 0);
-      await sendHeartbeat({
+      const heartbeatResult = await sendHeartbeat({
         targetDeviceId: deviceId,
         targetSessionId: session?.sessionId || null,
         intervalSeconds: policy.heartbeatIntervalSeconds,
@@ -700,12 +724,9 @@ export default function App() {
         }) === "Idle" ? "idle" : online ? "online" : "offline"
       })
         .catch(heartbeatError => setError(`Heartbeat delayed: ${heartbeatError.message}`));
-      let currentPolicy = policy;
-      try {
-        currentPolicy = await api.getPolicy();
+      const currentPolicy = heartbeatResult?.monitoringPolicy || policy;
+      if (heartbeatResult?.monitoringPolicy) {
         setPolicy(current => isSameMonitoringPolicy(current, currentPolicy) ? current : currentPolicy);
-      } catch {
-        // Keep the last verified policy during a temporary service interruption.
       }
       await reconcileWithServer(currentPolicy);
     }, Math.max(15, policy.heartbeatIntervalSeconds || 60) * 1000));
@@ -760,25 +781,6 @@ export default function App() {
     );
     return () => window.clearInterval(syncTimer);
   }, [account, deviceId, performSync, uploadIntervalSeconds]);
-
-  useEffect(() => {
-    if (!account || !api || !deviceId || !online) return undefined;
-    let cancelled = false;
-    const refreshWebAccessPolicy = async () => {
-      try {
-        const current = await api.getWebAccessPolicy(deviceId);
-        if (!cancelled && current?.ruleId) await applyWebAccessPolicy(current);
-      } catch {
-        await agentLog("web_access_policy_refresh_delayed", "warn");
-      }
-    };
-    refreshWebAccessPolicy();
-    const policyTimer = window.setInterval(refreshWebAccessPolicy, 10000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(policyTimer);
-    };
-  }, [account, api, applyWebAccessPolicy, deviceId, online]);
 
   useEffect(() => {
     if (!account || !deviceId || !webAccessPolicy?.enabled) return undefined;
@@ -891,7 +893,25 @@ export default function App() {
     }
   }
 
+  // Best-effort report of a locally blocked action or an observed removal so
+  // monitors are alerted. Never blocks or breaks the UI if the report fails.
+  const reportAgentEvent = useCallback(async (eventType, detail = {}) => {
+    const targetDeviceId = device?.deviceId;
+    if (!targetDeviceId) return;
+    try {
+      await api.reportAgentEvent({ deviceId: targetDeviceId, eventType, detail });
+      await agentLog(`agent_event_reported_${eventType}`);
+    } catch {
+      await agentLog(`agent_event_report_failed_${eventType}`, "warn");
+    }
+  }, [api, device]);
+
   async function signOut() {
+    if (!employeeSignOutAllowed) {
+      setError("This company-managed device can only be signed out by an administrator.");
+      if (corporateMode) await reportAgentEvent("signout_blocked", { source: "sign_out_button" });
+      return;
+    }
     if (session) {
       setError("Stop tracking before signing out.");
       return;
@@ -913,7 +933,7 @@ export default function App() {
   if (loading) return <main className="auth-shell"><p>Starting FieldFlow Activity Agent…</p></main>;
   if (!account) return <Login supabase={supabase} onSignedIn={signedIn} notice={error} />;
   if (policy?.requireAcknowledgement && !policy.acknowledgementStatus?.acknowledged) {
-    return <PolicyConsent policy={policy} onAccept={acknowledge} onSignOut={signOut} />;
+    return <PolicyConsent policy={policy} onAccept={acknowledge} onSignOut={signOut} allowSignOut={employeeSignOutAllowed} />;
   }
 
   const status = deriveAgentStatus({
@@ -928,15 +948,19 @@ export default function App() {
     <main className="app-shell">
       <header>
         <div><p className="eyebrow">FIELD-FLOW</p><h1>Activity Agent</h1></div>
-        <button id="sign-out-button" className="link-button" onClick={signOut}>Sign out</button>
+        {employeeSignOutAllowed
+          ? <button id="sign-out-button" className="link-button" onClick={signOut}>Sign out</button>
+          : <span className="managed-badge">Corporate Agent</span>}
       </header>
       <section className="status-hero card">
         <div><span className={`status-dot ${status.toLowerCase().replace(" ", "-")}`} /><strong>{status}</strong></div>
         <p>{account.profile.full_name}</p>
         <p className="muted">{device?.deviceName || "Registering this device…"}</p>
-        {session
-          ? <button id="stop-button" className="danger" onClick={stopTracking}>Stop tracking</button>
-          : <button id="start-button" onClick={startTracking} disabled={!policy?.trackingEnabled}>Start tracking</button>}
+        {corporateMode
+          ? <p className="managed-notice">Tracking and recovery are managed by your organisation.</p>
+          : session
+            ? <button id="stop-button" className="danger" onClick={stopTracking}>Stop tracking</button>
+            : <button id="start-button" onClick={startTracking} disabled={!policy?.trackingEnabled}>Start tracking</button>}
         <button id="sync-button" className="secondary sync-button" onClick={performSync} disabled={!device || !online}>Sync now</button>
         {policy && !policy.trackingEnabled && <p className="warning">Activity tracking is currently disabled by your administrator.</p>}
         {!policy && <p className="warning">Unable to reach the FieldFlow service to load your monitoring policy. Check your connection.</p>}
@@ -952,6 +976,7 @@ export default function App() {
         <article className="card metric"><span>Agent version</span><strong>{AGENT_VERSION}</strong></article>
         <article className="card metric"><span>Automatic updates</span><strong>{updateStatus}</strong></article>
         <article className="card metric"><span>Device status</span><strong>{device?.status || "Unknown"}</strong></article>
+        <article className="card metric"><span>Agent mode</span><strong>{corporateMode ? "Corporate" : "Standard"}</strong></article>
         <article className="card metric"><span>Platform</span><strong>{device?.operatingSystemVersion || "Windows"}</strong></article>
         <article className="card metric"><span>Registered</span><strong>{device?.registeredAt ? new Date(device.registeredAt).toLocaleString() : "Pending"}</strong></article>
       </section>

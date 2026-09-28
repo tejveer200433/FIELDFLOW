@@ -10,7 +10,8 @@
     "test": "node --test tests/*.test.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "tauri:build:corporate": "set VITE_AGENT_MODE=corporate&& set CARGO_BUILD_JOBS=1&& set CARGO_INCREMENTAL=0&& tauri build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",

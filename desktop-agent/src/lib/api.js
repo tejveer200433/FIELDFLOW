@@ -119,6 +119,9 @@ export function createActivityApi({ baseUrl, supabase, sessionManager, fetchImpl
     }),
     recordWebAccessEvent: body => request("/api/activity/web-access/events", {
       method: "POST", body: JSON.stringify(body)
+    }),
+    reportAgentEvent: body => request("/api/activity/agent-events", {
+      method: "POST", body: JSON.stringify(body)
     })
   };
 }
