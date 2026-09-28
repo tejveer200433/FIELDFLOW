@@ -1,8 +1,9 @@
 import { ApiError, apiFailure, assertUserInScope, notifyEvent, requireAnyPermission, requirePermission, resolveUserScope } from "@/backend/supabase/supabaseServer";
+import { RECEIPT_BUCKET, RECEIPT_TYPES, isPrivateReceiptPath, receiptFileError, receiptSignatureMatches } from "@/shared/expenseReceipts.mjs";
 
 export const dynamic = "force-dynamic";
 const expenseSelect = "*,profiles!expenses_employee_id_fkey(full_name)";
-const map = row => ({ id: row.id, employeeId: row.employee_id, employee: row.profiles?.full_name || "Employee", type: row.type, amount: Number(row.amount), date: row.expense_date, note: row.note, receiptUrl: row.receipt_url, status: row.status, managerComment: row.manager_comment || "" });
+const map = row => ({ id: row.id, employeeId: row.employee_id, employee: row.profiles?.full_name || "Employee", type: row.type, amount: Number(row.amount), date: row.expense_date, note: row.note, receiptUrl: row.receipt_url, hasReceipt: isPrivateReceiptPath(row.receipt_url), status: row.status, managerComment: row.manager_comment || "" });
 
 export async function GET(request) {
   try {
@@ -28,19 +29,41 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  let uploadedPath = null;
+  let storage = null;
+  let saved = false;
   try {
     const { client, profile } = await requirePermission(request, "expenses.submit");
-    const body = await request.json();
-    if (!body.type || !Number(body.amount) || !body.note) throw new ApiError("Type, amount and note are required.");
+    const multipart = request.headers.get("content-type")?.startsWith("multipart/form-data");
+    const form = multipart ? await request.formData() : null;
+    const body = form ? Object.fromEntries(form) : await request.json();
+    const amount = Number(body.amount);
+    if (!String(body.type || "").trim() || !Number.isFinite(amount) || amount <= 0 || amount >= 10000000000 || !String(body.note || "").trim()) throw new ApiError("Type, a valid positive amount and description are required.");
+    if (body.receiptUrl) throw new ApiError("Attach a receipt photo or PDF instead of a receipt URL.");
+    const file = form?.get("receipt");
+    if (file instanceof File && (file.name || file.size)) {
+      const validationError = receiptFileError(file);
+      if (validationError) throw new ApiError(validationError);
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (!receiptSignatureMatches(bytes, file.type)) throw new ApiError("The receipt contents do not match its file type.");
+      const path = `${profile.id}/${crypto.randomUUID()}.${RECEIPT_TYPES[file.type]}`;
+      storage = client.storage.from(RECEIPT_BUCKET);
+      const { error: uploadError } = await storage.upload(path, bytes, { contentType: file.type, upsert: false });
+      if (uploadError) throw new ApiError("Receipt upload failed. Please try again or contact your administrator if receipt storage is not available.", 503);
+      uploadedPath = path;
+    } else if (file && !(file instanceof File)) {
+      throw new ApiError("Attach a receipt photo or PDF.");
+    }
     const { data, error } = await client.from("expenses").insert({
       employee_id: profile.id,
       task_id: body.taskId || null,
       type: String(body.type).slice(0, 80),
-      amount: Number(body.amount),
+      amount,
       note: String(body.note).slice(0, 2000),
-      receipt_url: body.receiptUrl || null
+      receipt_url: uploadedPath
     }).select(expenseSelect).single();
     if (error) throw error;
+    saved = true;
     const mapped = map(data);
     await notifyEvent(client, {
       employeeId: profile.id,
@@ -53,6 +76,12 @@ export async function POST(request) {
     });
     return Response.json({ data: mapped }, { status: 201 });
   } catch (error) {
+    if (storage && uploadedPath && !saved) {
+      try {
+        const { error: cleanupError } = await storage.remove([uploadedPath]);
+        if (cleanupError) console.error("Expense receipt cleanup failed.", cleanupError);
+      } catch { console.error("Expense receipt cleanup could not complete."); }
+    }
     return apiFailure(error);
   }
 }

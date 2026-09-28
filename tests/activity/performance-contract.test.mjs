@@ -18,7 +18,20 @@ test("employee activity details aggregate usage in the database instead of downl
 
 test("manager report and expense polling is visibility-aware and bounded", () => {
   const workspace = read("src/frontend/features/manager/components/ManagerWorkspace.js");
+  const accessRequests = read("src/frontend/features/activity/components/BlocklistOverrideAdministration.js");
   assert.doesNotMatch(workspace, /setInterval\(load, 5000\)/);
   assert.match(workspace, /document\.visibilityState === "visible"/);
   assert.match(workspace, /30000/);
+  assert.doesNotMatch(accessRequests, /setInterval\(load, 5000\)/);
+  assert.match(accessRequests, /document\.visibilityState === "visible"/);
+  assert.match(accessRequests, /setTimeout\(tick, 30000\)/);
+});
+
+test("desktop agents reuse heartbeat policy data instead of polling duplicate policy endpoints", () => {
+  const agent = read("desktop-agent/src/App.jsx");
+  const heartbeat = read("src/app/api/activity/heartbeat/route.js");
+
+  assert.match(heartbeat, /monitoringPolicy: policy \? mapPolicy\(policy\) : null/);
+  assert.match(agent, /heartbeatResult\?\.monitoringPolicy/);
+  assert.doesNotMatch(agent, /setInterval\(refreshWebAccessPolicy, 10000\)/);
 });

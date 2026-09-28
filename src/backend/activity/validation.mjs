@@ -98,7 +98,10 @@ export function parseDeviceRegistration(value) {
 
 export function parseDeviceUpdate(value) {
   const body = object(value, ["action", "agentVersion", "screenshotCaptureEnabled"]);
-  const action = enumeration(body.action, "action", ["revoke", "reactivate", "update-agent", "set-screenshot-capture"]);
+  const action = enumeration(body.action, "action", [
+    "revoke", "reactivate", "update-agent", "set-screenshot-capture",
+    "set-corporate-mode", "set-standard-mode"
+  ]);
   return {
     action,
     agentVersion: body.action === "update-agent"
@@ -403,6 +406,11 @@ export function parseScreenshotSignedUrlQuery(searchParams) {
   const path = string(query.path, "path", { max: 500 });
   if (!screenshotPathPattern.test(path)) fail("path must be a valid screenshot storage path.");
   return { path };
+}
+
+export function parseScreenshotRequest(value) {
+  const body = object(value, ["deviceId"]);
+  return { deviceId: uuid(body.deviceId, "deviceId") };
 }
 
 export function parseAuditFilters(searchParams) {

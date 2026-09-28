@@ -4,6 +4,7 @@ node_modules/
 # Next.js build output
 .next/
 out/
+public/pdfjs/
 
 # Local environment variables (keep .env.example tracked)
 .env

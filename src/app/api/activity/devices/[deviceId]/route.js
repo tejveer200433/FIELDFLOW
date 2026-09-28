@@ -24,6 +24,19 @@ export async function PATCH(request, { params }) {
       if (error) throwActivityDatabaseError(error);
       return activitySuccess(data, { message: `Screenshot capture ${body.screenshotCaptureEnabled ? "enabled" : "disabled"} for this device.` });
     }
+    if (body.action === "set-corporate-mode" || body.action === "set-standard-mode") {
+      const agentMode = body.action === "set-corporate-mode" ? "corporate" : "standard";
+      const { data, error } = await session.client.rpc("activity_set_device_management", {
+        p_device_id: deviceId,
+        p_agent_mode: agentMode
+      });
+      if (error) throwActivityDatabaseError(error);
+      return activitySuccess(mapDevice(rpcRow(data)), {
+        message: agentMode === "corporate"
+          ? "Corporate Agent controls enabled. The employee can no longer sign out or quit locally."
+          : "Standard Agent controls restored."
+      });
+    }
     const { data, error } = await session.client.rpc("activity_update_device", {
       p_device_id: deviceId,
       p_action: body.action,

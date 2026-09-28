@@ -21,6 +21,9 @@ const mapWebAccessAlert = row => ({
   read: Boolean(row.read_at),
   createdAt: row.created_at
 });
+// Agent tamper alerts share the alert-row shape of web-access alerts.
+const mapAgentTamperAlert = mapWebAccessAlert;
+const MISSING_TABLE_CODES = ["42P01", "PGRST205"];
 
 export async function GET(request) {
   try {
@@ -30,20 +33,40 @@ export async function GET(request) {
     const limit = Math.min(50, Math.max(1, Number(params.get("limit")) || 20));
     let query = session.client.from("notifications").select("*").order("created_at", { ascending: false }).limit(limit);
     if (unreadOnly) query = query.is("read_at", null);
-    const [{ data, error }, { count: unreadCount, error: countError }, { data: webAlerts, error: webAlertError }, { count: webUnreadCount, error: webCountError }] = await Promise.all([
+    let tamperQuery = session.client.from("agent_tamper_alerts").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (unreadOnly) tamperQuery = tamperQuery.is("read_at", null);
+    const [
+      { data, error },
+      { count: unreadCount, error: countError },
+      { data: webAlerts, error: webAlertError },
+      { count: webUnreadCount, error: webCountError },
+      { data: tamperAlerts, error: tamperAlertError },
+      { count: tamperUnreadCount, error: tamperCountError }
+    ] = await Promise.all([
       query,
       session.client.from("notifications").select("id", { count: "exact", head: true }).is("read_at", null),
       session.client.from("web_access_alerts").select("*").order("created_at", { ascending: false }).limit(limit),
-      session.client.from("web_access_alerts").select("id", { count: "exact", head: true }).is("read_at", null)
+      session.client.from("web_access_alerts").select("id", { count: "exact", head: true }).is("read_at", null),
+      tamperQuery,
+      session.client.from("agent_tamper_alerts").select("id", { count: "exact", head: true }).is("read_at", null)
     ]);
     if (error) throw error;
     if (countError) throw countError;
-    if (webAlertError && !["42P01", "PGRST205"].includes(webAlertError.code)) throw webAlertError;
-    if (webCountError && !["42P01", "PGRST205"].includes(webCountError.code)) throw webCountError;
-    const merged = [...(data || []).map(map), ...(webAlerts || []).map(mapWebAccessAlert)]
+    if (webAlertError && !MISSING_TABLE_CODES.includes(webAlertError.code)) throw webAlertError;
+    if (webCountError && !MISSING_TABLE_CODES.includes(webCountError.code)) throw webCountError;
+    if (tamperAlertError && !MISSING_TABLE_CODES.includes(tamperAlertError.code)) throw tamperAlertError;
+    if (tamperCountError && !MISSING_TABLE_CODES.includes(tamperCountError.code)) throw tamperCountError;
+    const merged = [
+      ...(data || []).map(map),
+      ...(webAlerts || []).map(mapWebAccessAlert),
+      ...(tamperAlerts || []).map(mapAgentTamperAlert)
+    ]
       .sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt))
       .slice(0, limit);
-    return Response.json({ data: merged, unreadCount: (unreadCount || 0) + (webUnreadCount || 0) }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json(
+      { data: merged, unreadCount: (unreadCount || 0) + (webUnreadCount || 0) + (tamperUnreadCount || 0) },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error) {
     return apiFailure(error);
   }
@@ -63,9 +86,12 @@ export async function PATCH(request) {
     }
     let webQuery = session.client.from("web_access_alerts").update({ read_at: new Date().toISOString() }).is("read_at", null);
     if (!body.all) webQuery = webQuery.in("id", body.ids.slice(0, 50));
-    const [{ error }, { error: webError }] = await Promise.all([query, webQuery]);
+    let tamperQuery = session.client.from("agent_tamper_alerts").update({ read_at: new Date().toISOString() }).is("read_at", null);
+    if (!body.all) tamperQuery = tamperQuery.in("id", body.ids.slice(0, 50));
+    const [{ error }, { error: webError }, { error: tamperError }] = await Promise.all([query, webQuery, tamperQuery]);
     if (error) throw error;
-    if (webError && !["42P01", "PGRST205"].includes(webError.code)) throw webError;
+    if (webError && !MISSING_TABLE_CODES.includes(webError.code)) throw webError;
+    if (tamperError && !MISSING_TABLE_CODES.includes(tamperError.code)) throw tamperError;
     return Response.json({ data: { success: true } });
   } catch (error) {
     return apiFailure(error);

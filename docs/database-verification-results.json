@@ -1,0 +1,567 @@
+{
+  "checkedAt": "2026-09-11T17:54:38.031Z",
+  "projectHost": "lespxxumxpiqxuekrcoo.supabase.co",
+  "access": "publishable key; anonymous role; GET only",
+  "limitations": "Does not inspect deployed RLS definitions, SQL function bodies, grants, migration history, or authenticated employee/manager behavior.",
+  "tableChecks": 65,
+  "checks": [
+    {
+      "label": "table:activity_integrity_events",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table activity_integrity_events"
+    },
+    {
+      "label": "table:activity_daily_summaries",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table activity_daily_summaries"
+    },
+    {
+      "label": "table:activity_audit_logs",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table activity_audit_logs"
+    },
+    {
+      "label": "table:activity_rate_limits",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table activity_rate_limits"
+    },
+    {
+      "label": "table:agent_heartbeats",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table agent_heartbeats"
+    },
+    {
+      "label": "table:agent_integrity_reports",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table agent_integrity_reports"
+    },
+    {
+      "label": "table:activity_samples",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table activity_samples"
+    },
+    {
+      "label": "table:activity_screenshots",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:attendance_audit_log",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table attendance_audit_log"
+    },
+    {
+      "label": "table:attendance_anomalies",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table attendance_anomalies"
+    },
+    {
+      "label": "table:attendance_breaks",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:attendance_corrections",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:attendance_evidence",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table attendance_evidence"
+    },
+    {
+      "label": "table:attendance_holidays",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:attendance_locations",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table attendance_locations"
+    },
+    {
+      "label": "table:attendance_geofence_assignments",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:attendance_privacy_settings",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table attendance_privacy_settings"
+    },
+    {
+      "label": "table:attendance_shift_templates",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:attendance_reminders",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table attendance_reminders"
+    },
+    {
+      "label": "table:attendance_rosters",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:attendance_shifts",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:browser_extension_status",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:coding_activity_samples",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:daily_reports",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:employee_devices",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table employee_devices"
+    },
+    {
+      "label": "table:device_screenshot_settings",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:employee_locations",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:employee_attendance_schedules",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:expenses",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:leave_requests",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:location_history",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:monitoring_policies",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table monitoring_policies"
+    },
+    {
+      "label": "table:notifications",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:monitoring_policy_acknowledgements",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table monitoring_policy_acknowledgements"
+    },
+    {
+      "label": "table:permissions",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table permissions"
+    },
+    {
+      "label": "table:profiles",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:project_modules",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:rbac_audit_log",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table rbac_audit_log"
+    },
+    {
+      "label": "table:projects",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:report_presets",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:role_permissions",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table role_permissions"
+    },
+    {
+      "label": "table:sos_alerts",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:roles",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table roles"
+    },
+    {
+      "label": "table:submission_files",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:task_assignees",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table task_assignees"
+    },
+    {
+      "label": "table:task_attachments",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:task_board_preferences",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table task_board_preferences"
+    },
+    {
+      "label": "table:task_comments",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:task_financials",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:task_history",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table task_history"
+    },
+    {
+      "label": "table:task_work_evidence_contexts",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table task_work_evidence_contexts"
+    },
+    {
+      "label": "table:tasks",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:tracking_sessions",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table tracking_sessions"
+    },
+    {
+      "label": "table:teams",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table teams"
+    },
+    {
+      "label": "table:user_roles",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table user_roles"
+    },
+    {
+      "label": "table:team_members",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table team_members"
+    },
+    {
+      "label": "table:web_access_categories",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:web_access_events",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:web_access_alerts",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:web_access_requests",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:web_access_rules",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:website_block_override_requests",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:website_activity_samples",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "table:work_assignments",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "column:employee_devices.employee_sign_out_allowed",
+      "status": 400,
+      "ok": false,
+      "code": "42703",
+      "message": "column employee_devices.employee_sign_out_allowed does not exist"
+    },
+    {
+      "label": "column:employee_devices.agent_mode",
+      "status": 400,
+      "ok": false,
+      "code": "42703",
+      "message": "column employee_devices.agent_mode does not exist"
+    },
+    {
+      "label": "column:employee_devices.employee_quit_allowed",
+      "status": 400,
+      "ok": false,
+      "code": "42703",
+      "message": "column employee_devices.employee_quit_allowed does not exist"
+    },
+    {
+      "label": "table:work_submissions",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "column:employee_devices.recovery_enabled",
+      "status": 400,
+      "ok": false,
+      "code": "42703",
+      "message": "column employee_devices.recovery_enabled does not exist"
+    },
+    {
+      "label": "column:employee_devices.auto_start_tracking",
+      "status": 400,
+      "ok": false,
+      "code": "42703",
+      "message": "column employee_devices.auto_start_tracking does not exist"
+    },
+    {
+      "label": "column:employee_devices.managed_at",
+      "status": 400,
+      "ok": false,
+      "code": "42703",
+      "message": "column employee_devices.managed_at does not exist"
+    },
+    {
+      "label": "column:employee_devices.managed_by",
+      "status": 400,
+      "ok": false,
+      "code": "42703",
+      "message": "column employee_devices.managed_by does not exist"
+    },
+    {
+      "label": "column:attendance_shifts.check_in_captured_at",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "column:attendance_shifts.check_out_captured_at",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "column:attendance_shifts.check_in_client_event_id",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "column:attendance_shifts.check_out_client_event_id",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "column:attendance_shifts.risk_flags",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "column:attendance_shifts.worked_minutes",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "column:profiles.avatar_path",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "column:tasks.archived_at",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "column:tasks.recurrence",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "column:tasks.estimated_minutes",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "anonymous-visibility:profiles",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "anonymous-visibility:expenses",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "anonymous-visibility:daily_reports",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "anonymous-visibility:attendance_shifts",
+      "status": 200,
+      "ok": true,
+      "returnedRowCount": 0
+    },
+    {
+      "label": "anonymous-visibility:employee_devices",
+      "status": 401,
+      "ok": false,
+      "code": "42501",
+      "message": "permission denied for table employee_devices"
+    }
+  ]
+}

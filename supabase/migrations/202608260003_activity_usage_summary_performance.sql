@@ -73,3 +73,4 @@ revoke all on function public.activity_employee_usage_summary(uuid,timestamptz,t
 grant execute on function public.activity_employee_usage_summary(uuid,timestamptz,timestamptz,timestamptz) to authenticated;
 
 notify pgrst, 'reload schema';
+ 

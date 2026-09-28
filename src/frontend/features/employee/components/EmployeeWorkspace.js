@@ -9,6 +9,8 @@ import TaskCollaboration from "@/frontend/features/tasks/components/TaskCollabor
 import EmployeeProjects from "@/frontend/features/projects/components/EmployeeProjects";
 import EmployeeDashboard from "@/frontend/features/employee/components/EmployeeDashboard";
 import EmployeePageHeader from "@/frontend/features/employee/components/EmployeePageHeader";
+import ExpenseReceipt from "@/frontend/features/expenses/components/ExpenseReceipt";
+import { receiptFileError } from "@/shared/expenseReceipts.mjs";
 import { useAccess } from "@/frontend/contexts/AccessContext";
 import { hasAnyPermission, hasPermission, PERMISSIONS } from "@/shared/permissions";
 
@@ -199,21 +201,72 @@ function Reports() {
 function Expenses() {
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
+  const [receipt, setReceipt] = useState(null);
+  const [message, setMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const receiptInput = useRef(null);
   const load = useCallback(() => apiJson("/api/expenses", { cache: "no-store" }).then(payload => setItems(payload.data)), []);
-  useEffect(() => { load(); }, [load]);
-  async function submit(event) { event.preventDefault(); try { await apiJson("/api/expenses", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) }); setOpen(false); load(); } catch(error) { window.alert(error.message); } }
+  useEffect(() => { load().catch(error => setMessage(error.message)); }, [load]);
+  function selectReceipt(event) {
+    const file = event.target.files?.[0];
+    const error = file ? receiptFileError(file) : null;
+    setMessage(error || "");
+    setReceipt(error ? null : file || null);
+    if (error) event.target.value = "";
+  }
+  function closeForm() {
+    if (submittingRef.current) return;
+    setOpen(false);
+    setReceipt(null);
+    setMessage("");
+  }
+  async function submit(event) {
+    event.preventDefault();
+    if (submittingRef.current) return;
+    const form = new FormData(event.currentTarget);
+    if (receipt) form.set("receipt", receipt);
+    else form.delete("receipt");
+    submittingRef.current = true;
+    setSubmitting(true);
+    setMessage("");
+    try {
+      const payload = await apiJson("/api/expenses", { method: "POST", body: form });
+      setItems(current => [payload.data, ...current]);
+      setOpen(false);
+      setReceipt(null);
+      setMessage("Expense submitted for approval.");
+    } catch(error) { setMessage(error.message); }
+    finally { submittingRef.current = false; setSubmitting(false); }
+  }
   const pending = items.filter(item => item.status === "Pending").reduce((sum, item) => sum + item.amount, 0); const approved = items.filter(item => item.status === "Approved").reduce((sum, item) => sum + item.amount, 0);
   return <>
-    <Heading title="Expenses" subtitle="Submit field costs and follow every approval from one place." action={<button onClick={() => setOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-violet-700"><Plus className="h-4 w-4" />New expense</button>} />
+    <Heading title="Expenses" subtitle="Submit field costs with receipts and follow every approval from one place." action={<button onClick={() => { setMessage(""); setReceipt(null); setOpen(true); }} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-violet-700"><Plus className="h-4 w-4" />New expense</button>} />
+    {!open && message && <p role="status" className="mb-4 rounded-xl bg-violet-50 p-3 text-sm text-violet-800">{message}</p>}
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="rounded-2xl border border-amber-100 bg-gradient-to-br from-white to-amber-50 p-5 shadow-sm"><p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-amber-600">Pending approval</p><strong className="mt-3 block text-3xl tracking-tight text-slate-950">₹{pending.toLocaleString("en-IN")}</strong></div>
       <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-white to-emerald-50 p-5 shadow-sm"><p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-emerald-600">Approved</p><strong className="mt-3 block text-3xl tracking-tight text-slate-950">₹{approved.toLocaleString("en-IN")}</strong></div>
     </div>
     <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 px-5 py-4"><h2 className="font-extrabold text-slate-950">Expense history</h2></div>
-      <div className="divide-y divide-slate-100">{items.map(item => <article className="flex items-center justify-between gap-4 p-5 transition hover:bg-slate-50/70" key={item.id}><div><strong className="text-slate-900">₹{item.amount.toLocaleString("en-IN")} · {item.type}</strong><p className="mt-1 text-sm text-slate-500">{item.date} · {item.note}</p>{item.managerComment && <p className="mt-2 text-xs font-medium text-violet-700">Manager: {item.managerComment}</p>}</div><Pill status={item.status} /></article>)}{!items.length && <p className="p-10 text-center text-sm text-slate-500">No expenses submitted yet.</p>}</div>
+      <div className="divide-y divide-slate-100">{items.map(item => <article className="flex items-center justify-between gap-4 p-5 transition hover:bg-slate-50/70" key={item.id}><div><strong className="text-slate-900">₹{item.amount.toLocaleString("en-IN")} · {item.type}</strong><p className="mt-1 text-sm text-slate-500">{item.date} · {item.note}</p><ExpenseReceipt expense={item} />{item.managerComment && <p className="mt-2 text-xs font-medium text-violet-700">Manager: {item.managerComment}</p>}</div><Pill status={item.status} /></article>)}{!items.length && <p className="p-10 text-center text-sm text-slate-500">No expenses submitted yet.</p>}</div>
     </section>
-    {open && <Modal title="New expense" onClose={() => setOpen(false)}><form onSubmit={submit} className="space-y-4"><label><span className="label">Type</span><select name="type" className="input"><option>Travel</option><option>Meals</option><option>Fuel</option><option>Materials</option><option>Tools</option></select></label><label><span className="label">Amount</span><input name="amount" type="number" min="1" required className="input" /></label><label><span className="label">Description</span><textarea name="note" required className="input min-h-24" /></label><button className="inline-flex w-full items-center justify-center rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white hover:bg-violet-700">Submit expense</button></form></Modal>}
+    {open && <Modal title="New expense" onClose={closeForm}><form onSubmit={submit} className="space-y-4">
+      <fieldset disabled={submitting} className="space-y-4 disabled:opacity-70">
+        <label className="block"><span className="label">Type</span><select name="type" className="input"><option>Travel</option><option>Meals</option><option>Fuel</option><option>Materials</option><option>Tools</option></select></label>
+        <label className="block"><span className="label">Amount (₹)</span><input name="amount" type="number" min="0.01" step="0.01" required className="input" /></label>
+        <label className="block"><span className="label">Description</span><textarea name="note" required maxLength={2000} placeholder="What did you spend the money on?" className="input min-h-24" /></label>
+        <div className="rounded-2xl border border-dashed border-violet-200 bg-violet-50/50 p-4">
+          <label className="block"><span className="label">Receipt or proof <span className="font-normal text-slate-500">(optional)</span></span>
+            <span id="expense-receipt-help" className="mb-3 block text-xs text-slate-600">Attach a bill, payment screenshot, or receipt. PDF, JPG, PNG, or WebP · up to 4 MB.</span>
+            <input ref={receiptInput} type="file" name="receipt" accept="application/pdf,image/jpeg,image/png,image/webp" aria-describedby="expense-receipt-help" onChange={selectReceipt} className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-violet-100 file:px-3 file:py-2 file:font-semibold file:text-violet-800" />
+          </label>
+          {receipt && <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-600"><span className="min-w-0 break-all">{receipt.name} · {(receipt.size / 1024).toFixed(0)} KB</span><button type="button" onClick={() => { setReceipt(null); if (receiptInput.current) receiptInput.current.value = ""; }} className="shrink-0 font-bold text-rose-700">Remove</button></div>}
+        </div>
+      </fieldset>
+      {message && <p role="alert" className="text-sm text-rose-700">{message}</p>}
+      <button disabled={submitting} className="inline-flex w-full items-center justify-center rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white hover:bg-violet-700 disabled:cursor-wait disabled:opacity-60">{submitting ? (receipt ? "Uploading proof and submitting…" : "Submitting…") : "Submit expense"}</button>
+    </form></Modal>}
   </>;
 }
 

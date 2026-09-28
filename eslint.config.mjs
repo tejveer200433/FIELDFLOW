@@ -9,10 +9,10 @@ export default defineConfig([
       /*
        * Temporary compatibility rules for the existing FIELD-FLOW codebase.
        * These should be addressed gradually in a dedicated React cleanup.
-       */
+      */
+      "react/no-unescaped-entities": "off",
       "react-hooks/set-state-in-effect": "off",
       "react-hooks/purity": "off",
-      "react/no-unescaped-entities": "off",
 
       /*
        * Keep dependency and image issues visible without blocking builds.

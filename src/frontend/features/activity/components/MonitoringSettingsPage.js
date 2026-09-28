@@ -20,6 +20,7 @@ import {
   getMonitoringPolicy,
   reactivateMonitoringDevice,
   revokeMonitoringDevice,
+  setMonitoringDeviceMode,
   setDeviceScreenshotCapture,
   updateMonitoringPolicy
 } from "@/frontend/features/activity/api/policyClient";
@@ -196,6 +197,20 @@ export default function MonitoringSettingsPage() {
     }
   }
 
+  async function setDeviceMode(device, mode) {
+    setBusy(device.deviceId);
+    setDeviceError(null);
+    try {
+      const response = await setMonitoringDeviceMode(device.deviceId, mode);
+      setDevices(current => current.map(item => item.deviceId === device.deviceId ? response.data : item));
+      setNotice(response.message || `${device.deviceName} is now using ${mode} mode.`);
+    } catch (requestError) {
+      setDeviceError(requestError);
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function loadMoreDevices() {
     if (!deviceCursor) return;
     setBusy("devices");
@@ -250,7 +265,7 @@ export default function MonitoringSettingsPage() {
 
     {section === "devices" && <div className="space-y-4">
       <div className="flex flex-wrap gap-2">{[["all", "All", deviceCounts.total], ["pending", "Pending", deviceCounts.pending], ["active", "Active", deviceCounts.active], ["revoked", "Revoked", deviceCounts.revoked]].map(([id, label, count]) => <button type="button" key={id} onClick={() => setDeviceFilter(id)} className={`rounded-full border px-4 py-2 text-sm font-semibold ${deviceFilter === id ? "border-blue-600 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600"}`}>{label} ({count})</button>)}</div>
-      <MonitoringDeviceAdministration devices={devices} statusFilter={deviceFilter} screenshotsGloballyEnabled={Boolean(policy?.collectScreenshots)} error={deviceError} busyDeviceId={busy} nextCursor={deviceCursor} loadingMore={busy === "devices"} onAction={deviceAction} onScreenshotCaptureChange={setScreenshotCapture} onLoadMore={loadMoreDevices} />
+      <MonitoringDeviceAdministration devices={devices} statusFilter={deviceFilter} screenshotsGloballyEnabled={Boolean(policy?.collectScreenshots)} error={deviceError} busyDeviceId={busy} nextCursor={deviceCursor} loadingMore={busy === "devices"} onAction={deviceAction} onModeChange={setDeviceMode} onScreenshotCaptureChange={setScreenshotCapture} onLoadMore={loadMoreDevices} />
     </div>}
 
     {section === "access" && <div className="space-y-6">{policy?.websiteBlockingEnabled && <BlocklistOverrideAdministration />}<WebAccessAdministration view="rules" /></div>}

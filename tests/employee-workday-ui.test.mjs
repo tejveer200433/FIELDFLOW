@@ -9,6 +9,8 @@ const pageHeaderUrl = new URL("../src/frontend/features/employee/components/Empl
 const attendanceUrl = new URL("../src/frontend/features/attendance/components/EmployeeAttendance.js", import.meta.url);
 const activityUrl = new URL("../src/frontend/features/activity/components/EmployeeActivityPage.js", import.meta.url);
 const dashboardRouteUrl = new URL("../src/app/api/employee-dashboard/route.js", import.meta.url);
+const guideUrl = new URL("../src/frontend/features/employee/components/FieldFlowGuide.js", import.meta.url);
+const globalStylesUrl = new URL("../src/app/globals.css", import.meta.url);
 
 test("employee workday uses its scoped summary API without demo task identities", async () => {
   const [dashboard, workspace, dashboardRoute] = await Promise.all([
@@ -41,13 +43,28 @@ test("employee shell remains permission-filtered and responsive", async () => {
   assert.match(shell, /useNotifications\(\{ enabled: Boolean\(access\) \}\)/);
 });
 
-test("field and AI sections are contextual and never fabricate AI output", async () => {
-  const dashboard = await readFile(dashboardUrl, "utf8");
+test("field and AI sections are contextual and the Guide is employee controlled", async () => {
+  const [dashboard, guide, styles] = await Promise.all([
+    readFile(dashboardUrl, "utf8"),
+    readFile(guideUrl, "utf8"),
+    readFile(globalStylesUrl, "utf8")
+  ]);
 
   assert.match(dashboard, /const fieldTask = data\.tasks\.find/);
   assert.match(dashboard, /\{fieldTask && <section/);
-  assert.match(dashboard, /AI assistance is not connected yet/);
-  assert.match(dashboard, /<button disabled[^>]*>[\s\S]*?Plan My Day/);
+  assert.match(dashboard, /<FieldFlowGuide employeeName=\{employeeName\}/);
+  assert.match(guide, /Plan my day/);
+  assert.match(guide, /The Guide cannot change attendance, tasks, evidence, or tracking/);
+  assert.match(guide, /apiJson\("\/api\/ai\/employee-guide"/);
+  assert.match(guide, /fieldflow-guide-companion\.png/);
+  assert.match(guide, /listening: "Listening to your question"/);
+  assert.match(guide, /thinking: "Reviewing your workday"/);
+  assert.match(guide, /speaking: "Sharing your next step"/);
+  assert.match(guide, /speechSynthesis/);
+  assert.match(guide, /prefers-reduced-motion: reduce/);
+  assert.match(styles, /fieldflow-companion\[data-state="thinking"\]/);
+  assert.match(styles, /@keyframes fieldflow-guide-speak/);
+  assert.doesNotMatch(dashboard, /AI assistance is not connected yet/);
 });
 
 test("employee feature pages share the workday visual system", async () => {

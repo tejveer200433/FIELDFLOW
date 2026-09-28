@@ -16,7 +16,6 @@ import {
   Navigation,
   RefreshCw,
   Send,
-  Sparkles,
   Target,
   TimerReset,
   WalletCards
@@ -27,6 +26,7 @@ import { apiJson } from "@/frontend/lib/apiClient";
 import { hasPermission, PERMISSIONS } from "@/shared/permissions";
 import { breakDurationSeconds, dashboardTaskStats, localDateKey, plannedShiftSeconds, sameLocalDay, startOfLocalWeek, weeklyWorkStats, workedDurationSeconds } from "@/shared/employeeDashboard";
 import { durationSeconds, formatDuration } from "@/shared/time";
+import FieldFlowGuide from "@/frontend/features/employee/components/FieldFlowGuide";
 
 const PRIORITY_ORDER = { High: 0, Urgent: 0, Medium: 1, Low: 2 };
 
@@ -316,13 +316,6 @@ export default function EmployeeDashboard() {
 
     {fieldTask && <section className="overflow-hidden rounded-[24px] border border-blue-200 bg-gradient-to-r from-blue-50 to-cyan-50 p-6"><div className="flex flex-col gap-5 sm:flex-row sm:items-center"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-blue-600 text-white"><Navigation className="h-5 w-5" /></span><div className="min-w-0 flex-1"><p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-blue-600">Current field task</p><h2 className="mt-1 truncate text-xl font-extrabold text-slate-950">{fieldTask.title}</h2><p className="mt-1 flex items-center gap-1.5 text-sm text-slate-600"><MapPin className="h-4 w-4" />{fieldTask.address}</p></div><a href={`https://www.openstreetmap.org/search?query=${encodeURIComponent(fieldTask.address)}`} target="_blank" rel="noreferrer" className="btn-primary shrink-0"><Navigation className="h-4 w-4" />Navigate</a></div></section>}
 
-    <section id="fieldflow-ai" className="relative overflow-hidden rounded-2xl border-2 border-violet-500 bg-white p-5 shadow-[0_12px_30px_rgba(109,74,255,0.1)]">
-      <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-violet-300/30 blur-3xl" />
-      <div className="relative grid gap-5 lg:grid-cols-[1fr_1fr_auto] lg:items-center">
-        <div><p className="flex items-center gap-2 text-sm font-extrabold text-slate-900"><Sparkles className="h-4 w-4 text-violet-600" />FieldFlow AI Assistant <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[9px] text-violet-700">BETA</span></p><p className="mt-3 max-w-xl text-xs leading-5 text-slate-600">AI assistance is not connected yet. Your real workday information remains available through these safe shortcuts.</p></div>
-        <div className="flex flex-wrap gap-2"><button onClick={() => router.push("/employee/tasks")} className="rounded-lg border border-violet-200 bg-white px-3 py-2 text-[10px] font-semibold text-slate-600 hover:border-violet-400">What should I work on next?</button>{can(PERMISSIONS.attendanceViewSelf) && <button onClick={() => router.push("/employee/attendance")} className="rounded-lg border border-violet-200 bg-white px-3 py-2 text-[10px] font-semibold text-slate-600 hover:border-violet-400">Review today’s time</button>}</div>
-        <button disabled className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-violet-600 px-6 py-3 text-sm font-bold text-white opacity-55" title="AI functionality is not connected yet"><Sparkles className="h-4 w-4" />Plan My Day</button>
-      </div>
-    </section>
+    <FieldFlowGuide employeeName={employeeName} />
   </div>;
 }

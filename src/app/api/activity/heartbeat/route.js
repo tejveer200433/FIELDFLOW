@@ -1,5 +1,5 @@
 import { requireActivitySession, ACTIVITY_PERMISSIONS } from "@/backend/activity/auth";
-import { getActivePolicy, requireOwnedDevice, rpcRow, throwActivityDatabaseError } from "@/backend/activity/data";
+import { getActivePolicy, mapPolicy, requireOwnedDevice, rpcRow, throwActivityDatabaseError } from "@/backend/activity/data";
 import { enforceActivityRateLimit } from "@/backend/activity/rateLimit";
 import { activityFailure, activitySuccess, readActivityJson } from "@/backend/activity/responses";
 import { parseHeartbeat } from "@/backend/activity/validation.mjs";
@@ -58,6 +58,15 @@ export async function POST(request) {
       recordedAt: heartbeat.recorded_at,
       nextHeartbeatSeconds: policy?.heartbeat_interval_seconds || 60,
       deviceStatus: device.status,
+      agentManagement: {
+        mode: device.agent_mode || "standard",
+        employeeSignOutAllowed: device.employee_sign_out_allowed !== false,
+        employeeQuitAllowed: device.employee_quit_allowed !== false,
+        autoStartTracking: Boolean(device.auto_start_tracking),
+        recoveryEnabled: device.recovery_enabled !== false,
+        managedAt: device.managed_at || null
+      },
+      monitoringPolicy: policy ? mapPolicy(policy) : null,
       trackingEnabled: Boolean(policy?.tracking_enabled),
       websiteBlockingEnabled: Boolean(policy?.website_blocking_enabled),
       blockedDomains: policy?.website_blocking_enabled ? (policy?.blocked_domains || []) : [],

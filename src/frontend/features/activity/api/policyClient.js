@@ -48,6 +48,10 @@ export function reactivateMonitoringDevice(deviceId) {
   return updateMonitoringDevice(deviceId, "reactivate");
 }
 
+export function setMonitoringDeviceMode(deviceId, mode) {
+  return updateMonitoringDevice(deviceId, mode === "corporate" ? "set-corporate-mode" : "set-standard-mode");
+}
+
 export function setDeviceScreenshotCapture(deviceId, enabled) {
   return policyRequest(`/devices/${encodeURIComponent(deviceId)}`, {
     method: "PATCH",
@@ -60,6 +64,14 @@ export function deleteActivityScreenshots(screenshotIds) {
     method: "POST",
     body: JSON.stringify({ screenshotIds })
   });
+}
+
+export function requestDeviceScreenshot(deviceId) {
+  return policyRequest("/screenshots/requests", { method: "POST", body: JSON.stringify({ deviceId }) });
+}
+
+export function getDeviceScreenshotRequest(deviceId) {
+  return policyRequest(`/screenshots/requests?deviceId=${encodeURIComponent(deviceId)}`);
 }
 
 export function getBlocklistOverrideRequests() {

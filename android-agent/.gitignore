@@ -1,0 +1,7 @@
+.gradle/
+**/build/
+local.properties
+fieldflow.local.properties
+*.jks
+*.keystore
+dist/

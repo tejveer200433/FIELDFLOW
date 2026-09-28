@@ -30,9 +30,17 @@ export default function BlocklistOverrideAdministration() {
   }, []);
 
   useEffect(() => {
-    load();
-    const timer = window.setInterval(load, 5000);
-    return () => window.clearInterval(timer);
+    let stopped = false;
+    let timer = null;
+    const tick = async () => {
+      if (document.visibilityState === "visible" && navigator.onLine) await load();
+      if (!stopped) timer = window.setTimeout(tick, 30000);
+    };
+    tick();
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
   }, [load]);
 
   async function review(item, decision) {

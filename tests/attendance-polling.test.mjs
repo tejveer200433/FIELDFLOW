@@ -6,7 +6,8 @@ const read = relativePath => readFile(new URL(`../${relativePath}`, import.meta.
 
 test("employee attendance polling is overlap-safe and pauses when unavailable", async () => {
   const source = await read("src/frontend/features/attendance/components/EmployeeAttendance.js");
-  assert.match(source, /if \(loadRequest\.current\) return loadRequest\.current/);
+  assert.match(source, /if \(loadRequest\.current\?\.key === requestKey\) return loadRequest\.current\.promise/);
+  assert.match(source, /loadRequest\.current = \{ key: requestKey, promise: request \}/);
   assert.match(source, /document\.visibilityState === "visible" && navigator\.onLine/);
   assert.match(source, /setInterval\(refreshWhenVisible, 30000\)/);
   assert.match(source, /window\.addEventListener\("online", refreshWhenVisible\)/);

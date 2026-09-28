@@ -61,7 +61,7 @@ test("the admin dashboard has a separate map-first live operations view", async 
     read("src/frontend/features/manager/components/ManagerWorkspace.js")
   ]);
   assert.match(workspace, /role === "admin" \? <AdminDashboard access=\{access\} \/> : <ManagerDashboard access=\{access\} \/>/);
-  assert.match(dashboard, /Live Operations/);
+  assert.match(dashboard, /Operations · live/);
   assert.match(dashboard, /Dispatch Queue/);
   assert.match(dashboard, /Site Coverage \(Today\)/);
   assert.match(dashboard, /mapReady \? <LiveTeamMap \/>/);
