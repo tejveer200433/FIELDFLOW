@@ -26,6 +26,17 @@ export async function GET(request, { params }) {
     const startDate = filters.startDate || defaultStart.toISOString().slice(0, 10);
     const profiles = await getActivityProfiles(session.client, [employeeId]);
     if (!profiles.length) throw new ActivityError("EMPLOYEE_NOT_FOUND", "The employee was not found in your activity scope.", 404);
+    // Oversight: record that this viewer opened another employee's activity
+    // detail. Best-effort and non-blocking.
+    if (employeeId !== session.profile.id) {
+      await session.client.rpc("activity_log_read_access", {
+        p_employee_id: employeeId,
+        p_action: "activity.viewed",
+        p_entity_type: "employee_activity",
+        p_entity_id: null,
+        p_metadata: { range: { start: startDate, end: endDate } }
+      }).catch(() => null);
+    }
 
     const startTime = `${startDate}T00:00:00.000Z`;
     const endTime = `${endDate}T23:59:59.999Z`;

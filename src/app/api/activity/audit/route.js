@@ -13,12 +13,18 @@ export async function GET(request) {
       ACTIVITY_PERMISSIONS.viewAll
     ]);
     await enforceActivityRateLimit(session.client, "audit-read", { limit: 60, windowMs: 60 * 1000 });
-    const filters = parseAuditFilters(new URL(request.url).searchParams);
+    const params = new URL(request.url).searchParams;
+    const filters = parseAuditFilters(params);
     const offset = decodeCursor(filters.cursor);
-    const { data, error } = await session.client.from("activity_audit_logs")
-      .select("id,actor_user_id,employee_id,action,entity_type,created_at")
-      .order("created_at", { ascending: false })
-      .range(offset, offset + filters.limit);
+    // adminOnly: the owner-facing "what have my admins done to/viewed of others"
+    // feed -- audit rows where one person acted on or viewed a different employee.
+    const adminOnly = params.get("adminOnly") === "true";
+    const { data, error } = adminOnly
+      ? await session.client.rpc("activity_admin_audit", { p_limit: filters.limit + 1, p_offset: offset })
+      : await session.client.from("activity_audit_logs")
+          .select("id,actor_user_id,employee_id,action,entity_type,created_at")
+          .order("created_at", { ascending: false })
+          .range(offset, offset + filters.limit);
     if (error) throw error;
 
     const page = pageResult(data || [], offset, filters.limit);

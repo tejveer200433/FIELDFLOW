@@ -15,16 +15,22 @@ use windows::{
 const INSTANCE_MUTEX_NAME: windows::core::PCWSTR = w!("Local\\FieldFlowActivityAgent.Primary.0.4");
 const RECOVERY_EVENT_NAME: windows::core::PCWSTR = w!("Local\\FieldFlowActivityAgent.Recovery.0.4");
 const SHOW_EVENT_NAME: windows::core::PCWSTR = w!("Local\\FieldFlowActivityAgent.Show.0.4");
+const UNINSTALL_EVENT_NAME: windows::core::PCWSTR = w!("Local\\FieldFlowActivityAgent.Uninstall.0.4");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum LaunchReason {
     Interactive,
     Recovery,
     Watchdog,
+    // The uninstaller launches the agent with --report-uninstall so the already
+    // running instance can report the uninstall to the server before removal.
+    ReportUninstall,
 }
 
 fn launch_reason(arguments: &[String]) -> LaunchReason {
-    if arguments.iter().any(|argument| argument == "--watchdog") {
+    if arguments.iter().any(|argument| argument == "--report-uninstall") {
+        LaunchReason::ReportUninstall
+    } else if arguments.iter().any(|argument| argument == "--watchdog") {
         LaunchReason::Watchdog
     } else if arguments.iter().any(|argument| argument == "--recovery") {
         LaunchReason::Recovery
@@ -42,6 +48,7 @@ pub struct PrimaryInstance {
     mutex: HANDLE,
     recovery_event: HANDLE,
     show_event: HANDLE,
+    uninstall_event: HANDLE,
 }
 
 // These handles name process-wide Windows synchronization primitives. Waiting on or closing
@@ -52,6 +59,7 @@ unsafe impl Sync for PrimaryInstance {}
 impl Drop for PrimaryInstance {
     fn drop(&mut self) {
         unsafe {
+            let _ = CloseHandle(self.uninstall_event);
             let _ = CloseHandle(self.show_event);
             let _ = CloseHandle(self.recovery_event);
             let _ = CloseHandle(self.mutex);
@@ -86,6 +94,7 @@ pub fn acquire(arguments: &[String]) -> Result<AcquireResult, String> {
             match launch_reason(arguments) {
                 LaunchReason::Watchdog => {}
                 LaunchReason::Recovery => signal_existing(RECOVERY_EVENT_NAME)?,
+                LaunchReason::ReportUninstall => signal_existing(UNINSTALL_EVENT_NAME)?,
                 LaunchReason::Interactive => signal_existing(SHOW_EVENT_NAME)?,
             }
             return Ok(AcquireResult::SecondarySignalled);
@@ -110,11 +119,23 @@ pub fn acquire(arguments: &[String]) -> Result<AcquireResult, String> {
                 ));
             }
         };
+        let uninstall_event = match CreateEventW(None, false, false, UNINSTALL_EVENT_NAME) {
+            Ok(event) => event,
+            Err(error) => {
+                let _ = CloseHandle(show_event);
+                let _ = CloseHandle(recovery_event);
+                let _ = CloseHandle(mutex);
+                return Err(format!(
+                    "FieldFlow could not create its uninstall signal: {error}"
+                ));
+            }
+        };
 
         Ok(AcquireResult::Primary(PrimaryInstance {
             mutex,
             recovery_event,
             show_event,
+            uninstall_event,
         }))
     }
 }
@@ -136,16 +157,30 @@ impl PrimaryInstance {
         });
 
         let show_event_value = self.show_event.0 as usize;
+        let show_app = app.clone();
         thread::spawn(move || {
             let show_event = HANDLE(show_event_value as *mut _);
             loop {
                 if unsafe { WaitForSingleObject(show_event, INFINITE) } != WAIT_OBJECT_0 {
                     break;
                 }
-                if let Some(window) = app.get_webview_window("main") {
+                if let Some(window) = show_app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
                 }
+            }
+        });
+
+        // The uninstaller signals this so the running agent can report the
+        // uninstall to the server before its files are removed.
+        let uninstall_event_value = self.uninstall_event.0 as usize;
+        thread::spawn(move || {
+            let uninstall_event = HANDLE(uninstall_event_value as *mut _);
+            loop {
+                if unsafe { WaitForSingleObject(uninstall_event, INFINITE) } != WAIT_OBJECT_0 {
+                    break;
+                }
+                let _ = app.emit("agent-uninstall-detected", ());
             }
         });
     }
@@ -172,6 +207,14 @@ mod tests {
         assert_eq!(
             launch_reason(&["agent.exe".into()]),
             LaunchReason::Interactive
+        );
+    }
+
+    #[test]
+    fn report_uninstall_launch_is_recognized() {
+        assert_eq!(
+            launch_reason(&["agent.exe".into(), "--report-uninstall".into()]),
+            LaunchReason::ReportUninstall
         );
     }
 }

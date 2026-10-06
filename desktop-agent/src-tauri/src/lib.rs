@@ -52,8 +52,19 @@ fn disable_background_timer_throttling() {
 
 pub fn run() {
     #[cfg(windows)]
-    let primary_instance = match instance::acquire(&std::env::args().collect::<Vec<_>>()) {
-        Ok(instance::AcquireResult::Primary(instance)) => instance,
+    let arguments = std::env::args().collect::<Vec<_>>();
+    #[cfg(windows)]
+    let primary_instance = match instance::acquire(&arguments) {
+        Ok(instance::AcquireResult::Primary(instance)) => {
+            // A --report-uninstall launch is only meaningful when an agent is
+            // already running (it signals that instance). If we became the
+            // primary, no agent was running, so there is nothing to report and
+            // we must not start the full application during an uninstall.
+            if arguments.iter().any(|argument| argument == "--report-uninstall") {
+                return;
+            }
+            instance
+        }
         Ok(instance::AcquireResult::SecondarySignalled) => return,
         Err(error) => {
             eprintln!("{error}");

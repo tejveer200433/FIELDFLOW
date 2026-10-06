@@ -499,6 +499,7 @@ export default function App() {
       listen("agent-start-requested", () => { if (!corporateMode && !session) document.getElementById("start-button")?.click(); }),
       listen("agent-stop-requested", () => { if (!corporateMode && session) document.getElementById("stop-button")?.click(); }),
       listen("agent-sync-requested", () => { document.getElementById("sync-button")?.click(); }),
+      listen("agent-uninstall-detected", () => { reportAgentEvent("uninstall_attempt", { source: "uninstaller" }); }),
       listen("agent-sign-out-requested", () => {
         if (employeeSignOutAllowed) document.getElementById("sign-out-button")?.click();
         else {

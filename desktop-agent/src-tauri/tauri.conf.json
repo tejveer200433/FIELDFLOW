@@ -44,7 +44,8 @@
     "longDescription": "Privacy-preserving employee activity collection for FIELD-FLOW.",
     "windows": {
       "nsis": {
-        "installMode": "perMachine"
+        "installMode": "perMachine",
+        "installerHooks": "installer-hooks.nsh"
       }
     }
   }
