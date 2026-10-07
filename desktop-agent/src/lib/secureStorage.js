@@ -115,14 +115,24 @@ export function createSecureSessionStorage(invokeImpl = invoke) {
           if (manifest.active) {
             const active = await readGeneration(key, manifest.active);
             if (active !== null) return active;
-            // A refresh token is single-use and rotates. Falling back to the
-            // previous generation can replay an already-consumed token and
-            // revoke the whole Supabase token family. Preserve the broken
-            // generation for recovery and surface a retryable storage error.
-            throw new Error("The active secure-session generation is incomplete.");
+            // The active generation is structurally incomplete: its chunks are
+            // missing (NoEntry), not merely unreadable this instant. Retrying can
+            // never recover it, and because the chunks are gone there is no intact
+            // token to replay. Clear the broken session and report "no session" so
+            // the agent falls back to sign-in, instead of looping on a retryable
+            // storage error forever. (A genuinely transient keyring failure throws
+            // from readGeneration and is still surfaced as retryable below.)
+            await invokeImpl("secure_write", {
+              key: `${key}:manifest`,
+              value: JSON.stringify({ active: null, backup: null })
+            }).catch(() => {});
+            await deleteGeneration(key, manifest.active).catch(() => {});
+            return null;
           }
           if (manifest.backup) {
-            throw new Error("The secure-session manifest has no active generation.");
+            // Only a stale backup remains and no active generation. Do not replay
+            // the backup token; force a fresh sign-in rather than looping.
+            return null;
           }
           return readLegacy(key);
         } catch (error) {

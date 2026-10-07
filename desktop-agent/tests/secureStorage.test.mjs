@@ -187,7 +187,7 @@ test("automatic auth cleanup cannot erase a saved FieldFlow login", async () => 
   assert.equal(await storage.getItem("sb-project-auth-token"), null);
 });
 
-test("a missing active generation never replays a rotated backup token", async () => {
+test("a structurally incomplete active generation clears to sign-in, never replaying a backup token", async () => {
   const credentials = new Map();
   const invoke = async (command, payload) => {
     if (command === "secure_read") return credentials.get(payload.key) ?? null;
@@ -201,8 +201,31 @@ test("a missing active generation never replays a rotated backup token", async (
   const manifest = JSON.parse(credentials.get("sb-project-auth-token:manifest"));
   credentials.delete(`sb-project-auth-token:g:${manifest.active}:0`);
 
-  await assert.rejects(
-    storage.getItem("sb-project-auth-token"),
-    /active secure-session generation is incomplete/
-  );
+  // Missing chunks are unrecoverable: return null (force a fresh sign-in)
+  // instead of looping on a retryable error, and never replay the backup token.
+  const result = await storage.getItem("sb-project-auth-token");
+  assert.equal(result, null);
+  assert.notEqual(result, "old-rotated-session");
+  // The broken session is cleared so startup does not retry forever.
+  const clearedManifest = JSON.parse(credentials.get("sb-project-auth-token:manifest"));
+  assert.equal(clearedManifest.active, null);
+});
+
+test("a transient keyring read failure is still surfaced as a retryable error", async () => {
+  const credentials = new Map();
+  let failReads = false;
+  const invoke = async (command, payload) => {
+    if (command === "secure_read") {
+      if (failReads && /:g:/.test(payload.key)) throw new Error("Credential Manager is temporarily locked");
+      return credentials.get(payload.key) ?? null;
+    }
+    if (command === "secure_write") { credentials.set(payload.key, payload.value); return; }
+    if (command === "secure_delete") { credentials.delete(payload.key); return; }
+    throw new Error(`Unexpected command: ${command}`);
+  };
+  const storage = createSecureSessionStorage(invoke);
+  await storage.setItem("sb-project-auth-token", "current-session");
+  failReads = true;
+  // A thrown (transient) read must NOT clear the session; it stays retryable.
+  await assert.rejects(storage.getItem("sb-project-auth-token"), /could not read the secure session/);
 });
