@@ -30,17 +30,20 @@ test("the admin-activity feed is owner/admin-only and shows cross-subject rows",
   assert.match(migration, /grant execute on function public\.activity_admin_audit\(integer,integer\) to authenticated/);
 });
 
-test("viewing another employee's screenshot is logged, best-effort", () => {
+test("viewing another employee's screenshot is logged, best-effort via try/catch", () => {
   assert.match(screenshotRoute, /select\("id,employee_id"\)/);
   assert.match(screenshotRoute, /screenshot\.employee_id !== session\.profile\.id/);
   assert.match(screenshotRoute, /p_action: "screenshot\.viewed"/);
-  assert.match(screenshotRoute, /activity_log_read_access[\s\S]*\.catch\(\(\) => null\)/);
+  // Must be wrapped in try/catch, NOT .catch() -- the rpc builder has no .catch.
+  assert.match(screenshotRoute, /try\s*\{[\s\S]*activity_log_read_access[\s\S]*\}\s*catch/);
+  assert.doesNotMatch(screenshotRoute, /activity_log_read_access[\s\S]*\.catch\(/);
 });
 
-test("viewing another employee's activity detail is logged, best-effort", () => {
+test("viewing another employee's activity detail is logged, best-effort via try/catch", () => {
   assert.match(employeeRoute, /employeeId !== session\.profile\.id/);
   assert.match(employeeRoute, /p_action: "activity\.viewed"/);
-  assert.match(employeeRoute, /activity_log_read_access[\s\S]*\.catch\(\(\) => null\)/);
+  assert.match(employeeRoute, /try\s*\{[\s\S]*activity_log_read_access[\s\S]*\}\s*catch/);
+  assert.doesNotMatch(employeeRoute, /activity_log_read_access[\s\S]*\.catch\(/);
 });
 
 test("the audit route exposes the owner admin-only feed", () => {

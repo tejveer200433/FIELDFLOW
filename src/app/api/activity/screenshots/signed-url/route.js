@@ -23,13 +23,15 @@ export async function GET(request) {
     // Oversight: record that this viewer opened another employee's screenshot.
     // Best-effort and non-blocking -- never fails the view if logging is denied.
     if (screenshot.employee_id && screenshot.employee_id !== session.profile.id) {
-      await session.client.rpc("activity_log_read_access", {
-        p_employee_id: screenshot.employee_id,
-        p_action: "screenshot.viewed",
-        p_entity_type: "activity_screenshot",
-        p_entity_id: screenshot.id,
-        p_metadata: {}
-      }).catch(() => null);
+      try {
+        await session.client.rpc("activity_log_read_access", {
+          p_employee_id: screenshot.employee_id,
+          p_action: "screenshot.viewed",
+          p_entity_type: "activity_screenshot",
+          p_entity_id: screenshot.id,
+          p_metadata: {}
+        });
+      } catch { /* best-effort oversight log; never block the response */ }
     }
     return activitySuccess({ url: data.signedUrl });
   } catch (error) {

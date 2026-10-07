@@ -29,13 +29,15 @@ export async function GET(request, { params }) {
     // Oversight: record that this viewer opened another employee's activity
     // detail. Best-effort and non-blocking.
     if (employeeId !== session.profile.id) {
-      await session.client.rpc("activity_log_read_access", {
-        p_employee_id: employeeId,
-        p_action: "activity.viewed",
-        p_entity_type: "employee_activity",
-        p_entity_id: null,
-        p_metadata: { range: { start: startDate, end: endDate } }
-      }).catch(() => null);
+      try {
+        await session.client.rpc("activity_log_read_access", {
+          p_employee_id: employeeId,
+          p_action: "activity.viewed",
+          p_entity_type: "employee_activity",
+          p_entity_id: null,
+          p_metadata: { range: { start: startDate, end: endDate } }
+        });
+      } catch { /* best-effort oversight log; never block the response */ }
     }
 
     const startTime = `${startDate}T00:00:00.000Z`;
